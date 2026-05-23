@@ -1,0 +1,18 @@
+{
+  "name": "ふたり家計ノート",
+  "short_name": "家計ノート",
+  "description": "スマホで使う家計簿アプリ",
+  "start_url": "./index.html#dashboard",
+  "display": "standalone",
+  "background_color": "#f6f4ef",
+  "theme_color": "#27745c",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

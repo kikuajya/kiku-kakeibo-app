@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#27745c" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="家計ノート" />
+    <title>ふたり家計ノート</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="view-dashboard">
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="ナビゲーション">
+        <div class="brand">
+          <div class="brand-mark">¥</div>
+          <div>
+            <p class="eyebrow">Couple budget</p>
+            <h1>ふたり家計ノート</h1>
+          </div>
+        </div>
+        <nav class="nav-list">
+          <a class="active" href="#dashboard">今月</a>
+          <a href="#receipt">入力</a>
+          <a href="#budget">予算</a>
+          <a href="#trend">グラフ</a>
+          <a href="#analysis">分析</a>
+        </nav>
+        <div class="sidebar-panel">
+          <span>今月の目標</span>
+          <strong id="monthlyGoal">¥240,000</strong>
+          <p>生活費全体をこの範囲に収める</p>
+        </div>
+      </aside>
+
+      <main>
+        <section class="hero" id="dashboard">
+          <div>
+            <p class="eyebrow" id="monthLabel">今月</p>
+            <h2 id="heroTitle">生活費全体を見ながら、外食の使いすぎも逃さない。</h2>
+          </div>
+          <button class="primary-action" id="openReceiptButton" type="button" aria-label="入力画面へ移動">＋ 入力</button>
+        </section>
+
+        <section class="mode-switcher" aria-label="利用モード">
+          <div>
+            <span>利用モード</span>
+            <strong id="modeLabel">夫婦用</strong>
+          </div>
+          <div class="mode-toggle" role="group" aria-label="利用モードを選択">
+            <button class="selected" type="button" data-mode="couple">夫婦</button>
+            <button type="button" data-mode="personal">個人</button>
+          </div>
+        </section>
+
+        <section class="month-switcher" aria-label="表示月">
+          <label>
+            表示月
+            <select id="monthSelect"></select>
+          </label>
+        </section>
+
+        <section class="metrics" aria-label="今月の概要">
+          <article>
+            <span>今月の生活費</span>
+            <strong id="totalSpend">¥0</strong>
+            <small id="totalTrend">データを入力してください</small>
+          </article>
+          <article>
+            <span>食費</span>
+            <strong id="foodSpend">¥0</strong>
+            <small id="foodShare">生活費の0%</small>
+          </article>
+          <article>
+            <span>外食費</span>
+            <strong id="diningSpend">¥0</strong>
+            <small id="diningShare">食費の0%</small>
+          </article>
+          <article>
+            <span>残り予算</span>
+            <strong id="remainingBudget">¥0</strong>
+            <small id="budgetStatus">予算内</small>
+          </article>
+        </section>
+
+        <section class="panel budget-panel app-section" id="budget" aria-label="予算設定">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Budget</p>
+              <h3>予算設定</h3>
+            </div>
+            <span class="autosave-label">自動保存</span>
+          </div>
+          <div class="budget-grid">
+            <label>
+              全体予算
+              <input id="budgetTotal" type="text" inputmode="numeric" data-budget-key="total" />
+            </label>
+            <label>
+              家賃（固定）
+              <input id="budgetRent" type="text" inputmode="numeric" data-budget-key="rent" />
+            </label>
+            <label>
+              光熱費
+              <input id="budgetUtilities" type="text" inputmode="numeric" data-budget-key="utilities" />
+            </label>
+            <label>
+              食費
+              <input id="budgetFood" type="text" inputmode="numeric" data-budget-key="food" />
+            </label>
+            <label>
+              外食費
+              <input id="budgetDining" type="text" inputmode="numeric" data-budget-key="dining" />
+            </label>
+            <label>
+              娯楽費
+              <input id="budgetEntertainment" type="text" inputmode="numeric" data-budget-key="entertainment" />
+            </label>
+            <label>
+              臨時出費
+              <input id="budgetSpecial" type="text" inputmode="numeric" data-budget-key="special" />
+            </label>
+            <label>
+              その他
+              <input id="budgetOther" type="text" inputmode="numeric" data-budget-key="other" />
+            </label>
+          </div>
+          <p class="budget-note">毎月1日始まり、末日締めで集計します。家賃は固定費として毎月の生活費に含めます。</p>
+        </section>
+
+        <section class="panel trend-panel app-section" id="trend">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">12 months</p>
+              <h3>月別推移</h3>
+            </div>
+            <div class="chart-legend" aria-label="グラフ凡例">
+              <span><i class="legend-total"></i>全体</span>
+              <span><i class="legend-dining"></i>外食費</span>
+            </div>
+          </div>
+          <canvas id="trendChart" width="900" height="320" aria-label="過去12ヶ月の全体支出と外食費の折れ線グラフ"></canvas>
+          <div class="trend-summary" id="trendSummary"></div>
+          <div class="trend-table" id="trendTable" aria-label="過去12ヶ月の月別金額"></div>
+        </section>
+
+        <section class="content-grid">
+          <section class="panel entry-panel" id="receipt">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Receipt</p>
+                <h3>支出を入力</h3>
+              </div>
+              <div class="advance-control">
+                <span>支払い</span>
+                <div class="payer-toggle" id="payerToggle" role="group" aria-label="立替フラグ">
+                  <button class="selected" type="button" data-advance-payer="">共有</button>
+                  <button type="button" data-advance-payer="旦那">旦那</button>
+                  <button type="button" data-advance-payer="妻">妻</button>
+                </div>
+              </div>
+            </div>
+
+            <label class="upload-box" for="receiptImage">
+              <input id="receiptImage" type="file" accept="image/*" capture="environment" />
+              <span>カメラで撮影して入力</span>
+              <small>無料の端末内読み取りだけを使用</small>
+            </label>
+            <img class="receipt-preview" id="receiptPreview" alt="選択したレシート写真のプレビュー" />
+            <div class="scan-status" id="scanStatus" aria-live="polite">
+              <strong>撮影待ち</strong>
+              <span>写真は外部サービスへ送信しません。読み取れない場合は手入力できます。</span>
+            </div>
+
+            <form id="expenseForm" class="expense-form">
+              <label>
+                日付
+                <input id="expenseDate" type="date" required />
+              </label>
+              <label>
+                店名・内容
+                <input id="expenseMemo" type="text" placeholder="例：スーパー、電気代、映画" required />
+              </label>
+              <label>
+                金額
+                <input id="expenseAmount" type="number" min="1" step="1" placeholder="3800" required />
+              </label>
+              <label>
+                カテゴリ
+                <select id="expenseCategory" required>
+                  <option value="食費">食費</option>
+                  <option value="外食費">外食費</option>
+                  <option value="日用品">日用品</option>
+                  <option value="娯楽費">娯楽費</option>
+                  <option value="光熱費">光熱費</option>
+                  <option value="通信費">通信費</option>
+                  <option value="交通費">交通費</option>
+                  <option value="医療費">医療費</option>
+                  <option value="家賃">家賃</option>
+                  <option value="臨時出費">臨時出費</option>
+                  <option value="その他">その他</option>
+                </select>
+              </label>
+              <button class="submit-button" type="submit">登録する</button>
+            </form>
+          </section>
+
+          <section class="panel" id="analysis">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Category</p>
+                <h3>カテゴリ別の支出</h3>
+              </div>
+              <div class="pie-legend" id="categoryPieLegend" aria-label="円グラフの凡例"></div>
+            </div>
+            <canvas id="categoryPieChart" class="pie-chart" width="320" height="320" aria-label="カテゴリ別支出の円グラフ"></canvas>
+            <div class="category-list" id="categoryList"></div>
+          </section>
+        </section>
+
+        <section class="wide-grid">
+          <section class="panel" id="history">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">History</p>
+                <h3>最近の登録</h3>
+              </div>
+              <button class="ghost-button" id="seedButton" type="button">サンプル投入</button>
+            </div>
+            <div class="expense-list" id="expenseList"></div>
+          </section>
+
+          <section class="panel advice-panel" id="advice">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Advice</p>
+                <h3>節約アドバイス</h3>
+              </div>
+            </div>
+            <div class="advice-list" id="adviceList"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="./script.js"></script>
+  </body>
+</html>
