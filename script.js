@@ -1,3 +1,32 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import {
+  doc,
+  getFirestore,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCUEOBwgYVZVLKqjSbaZSo57r9F9rTWjOQ",
+  authDomain: "kiku-kakeibo.firebaseapp.com",
+  projectId: "kiku-kakeibo",
+  storageBucket: "kiku-kakeibo.firebasestorage.app",
+  messagingSenderId: "111629188939",
+  appId: "1:111629188939:web:b79bd98cadff307c11f2ce",
+  measurementId: "G-D0MF23013X",
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+
 const defaultBudgets = {
   total: 320000,
   rent: 80000,
@@ -63,14 +92,14 @@ const sampleExpenses = [
 
 const modeConfig = {
   couple: {
-    label: "夫婦用",
+    label: "夫婦用（共有）",
     storageKey: "couple-budget-expenses",
     defaultPayer: "夫",
     hero: "生活費全体を2人で見ながら、外食の使いすぎも逃さない。",
     emptyAdvice: "夫婦どちらが払ったかと金額を残すことを優先しましょう。",
   },
   personal: {
-    label: "個人用",
+    label: "個人用（本人のみ）",
     storageKey: "personal-budget-expenses",
     defaultPayer: "自分",
     hero: "自分の生活費を見ながら、無理なく節約ポイントを見つける。",
@@ -82,6 +111,13 @@ let currentMode = localStorage.getItem("budget-app-mode") || "couple";
 let selectedAdvancePayer = "";
 let expenses = loadExpenses();
 let budgets = loadBudgets();
+let selectedStamp = localStorage.getItem("budget-app-selected-stamp") || "🐱";
+let noSpendStamps = loadNoSpendStamps();
+let pendingStampDate = "";
+let authUser = null;
+let cloudUnsubscribe = null;
+let cloudSaveTimer = 0;
+let applyingCloudData = false;
 
 const formatter = new Intl.NumberFormat("ja-JP", {
   style: "currency",
@@ -94,12 +130,15 @@ const dateInput = document.querySelector("#expenseDate");
 const memoInput = document.querySelector("#expenseMemo");
 const amountInput = document.querySelector("#expenseAmount");
 const categoryInput = document.querySelector("#expenseCategory");
+const submitButton = document.querySelector(".submit-button");
+const cancelEditButton = document.querySelector("#cancelEditButton");
 const receiptInput = document.querySelector("#receiptImage");
 const receiptPreview = document.querySelector("#receiptPreview");
 const scanStatus = document.querySelector("#scanStatus");
 const seedButton = document.querySelector("#seedButton");
 const openReceiptButton = document.querySelector("#openReceiptButton");
 const modeLabel = document.querySelector("#modeLabel");
+const viewTitle = document.querySelector("#viewTitle");
 const heroTitle = document.querySelector("#heroTitle");
 const monthLabel = document.querySelector("#monthLabel");
 const monthSelect = document.querySelector("#monthSelect");
@@ -109,16 +148,47 @@ const trendSummary = document.querySelector("#trendSummary");
 const trendTable = document.querySelector("#trendTable");
 const categoryPieChart = document.querySelector("#categoryPieChart");
 const categoryPieLegend = document.querySelector("#categoryPieLegend");
+const calendarGrid = document.querySelector("#calendarGrid");
+const calendarTotal = document.querySelector("#calendarTotal");
+const stampPicker = document.querySelector("#stampPicker");
+const stampTargetLabel = document.querySelector("#stampTargetLabel");
+const closeStampPicker = document.querySelector("#closeStampPicker");
+const clearStampButton = document.querySelector("#clearStampButton");
+const selectedDateLabel = document.querySelector("#selectedDateLabel");
+const selectedDateTotal = document.querySelector("#selectedDateTotal");
+const selectedDayExpenses = document.querySelector("#selectedDayExpenses");
+const authGate = document.querySelector("#authGate");
+const loginForm = document.querySelector("#loginForm");
+const loginEmail = document.querySelector("#loginEmail");
+const loginPassword = document.querySelector("#loginPassword");
+const authMessage = document.querySelector("#authMessage");
+const signOutButton = document.querySelector("#signOutButton");
+const syncStatus = document.querySelector("#syncStatus");
+let editingExpenseId = "";
 let selectedMonthOffset = Number(localStorage.getItem("budget-app-month-offset") || 0);
 
 dateInput.valueAsDate = new Date();
 
+loginForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setAuthMessage("ログイン中です...");
+
+  try {
+    await signInWithEmailAndPassword(auth, loginEmail.value.trim(), loginPassword.value);
+    loginPassword.value = "";
+  } catch (error) {
+    setAuthMessage(firebaseAuthErrorMessage(error));
+  }
+});
+
+signOutButton?.addEventListener("click", async () => {
+  await signOut(auth);
+});
+
 document.querySelectorAll("[data-advance-payer]").forEach((button) => {
   button.addEventListener("click", () => {
     selectedAdvancePayer = button.dataset.advancePayer;
-    document.querySelectorAll("[data-advance-payer]").forEach((item) => {
-      item.classList.toggle("selected", item === button);
-    });
+    syncAdvanceButtons();
   });
 });
 
@@ -126,14 +196,76 @@ document.querySelectorAll("[data-mode]").forEach((button) => {
   button.addEventListener("click", () => switchMode(button.dataset.mode));
 });
 
+document.querySelectorAll(".nav-list a").forEach((link) => {
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    const nextView = link.getAttribute("href") || "#dashboard";
+    navigateTo(nextView);
+  });
+});
+
 window.addEventListener("hashchange", updateViewFromHash);
+window.addEventListener("popstate", updateViewFromHash);
+
+stampPicker?.addEventListener("click", (event) => {
+  if (event.target === stampPicker) {
+    closeStampSheet();
+    return;
+  }
+
+  const stampButton = event.target.closest("[data-stamp]");
+  if (!stampButton) return;
+  selectedStamp = stampButton.dataset.stamp;
+  localStorage.setItem("budget-app-selected-stamp", selectedStamp);
+  applyNoSpendStamp(selectedStamp);
+  syncStampButtons();
+});
+
+closeStampPicker?.addEventListener("click", closeStampSheet);
+clearStampButton?.addEventListener("click", clearNoSpendStamp);
+
+calendarGrid?.addEventListener("click", (event) => {
+  const stampButton = event.target.closest("[data-stamp-date]");
+  if (stampButton) {
+    openStampSheet(stampButton.dataset.stampDate);
+    return;
+  }
+
+  const dayButton = event.target.closest("[data-calendar-date]");
+  if (!dayButton) return;
+  openDateForInput(dayButton.dataset.calendarDate);
+});
+
+dateInput.addEventListener("change", () => {
+  clearEditState(false);
+  renderSelectedDay();
+});
+
+selectedDayExpenses?.addEventListener("click", (event) => {
+  const editButton = event.target.closest("[data-edit-expense]");
+  if (editButton) {
+    startEditExpense(editButton.dataset.editExpense);
+    return;
+  }
+
+  const deleteButton = event.target.closest("[data-delete-expense]");
+  if (deleteButton) {
+    deleteExpense(deleteButton.dataset.deleteExpense);
+  }
+});
+
+cancelEditButton?.addEventListener("click", () => {
+  clearEditState();
+});
 
 monthSelect.addEventListener("change", () => {
   selectedMonthOffset = Number(monthSelect.value);
   localStorage.setItem("budget-app-month-offset", String(selectedMonthOffset));
   renderMetrics();
   renderCategories();
+  renderCalendar();
   renderExpenses();
+  renderSelectedDay();
   renderAdvice();
   renderMode();
 });
@@ -144,6 +276,7 @@ budgetInputs.forEach((input) => {
     saveBudgets();
     renderMetrics();
     renderCategories();
+    renderCalendar();
     renderAdvice();
     renderTrendChart();
     document.querySelector("#monthlyGoal").textContent = yen(budgets.total);
@@ -155,7 +288,7 @@ budgetInputs.forEach((input) => {
 });
 
 openReceiptButton.addEventListener("click", () => {
-  window.location.hash = "#receipt";
+  navigateTo("#receipt");
 });
 
 receiptInput.addEventListener("change", async () => {
@@ -170,8 +303,10 @@ receiptInput.addEventListener("change", async () => {
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
+  const submittedDate = dateInput.value;
 
   const expense = {
+    id: editingExpenseId || createExpenseId(),
     date: dateInput.value,
     memo: memoInput.value.trim(),
     amount: Number(amountInput.value),
@@ -180,17 +315,24 @@ form.addEventListener("submit", (event) => {
     advancePayer: currentMode === "couple" ? selectedAdvancePayer : "",
   };
 
-  expenses = [expense, ...expenses];
+  if (editingExpenseId) {
+    expenses = expenses.map((item) => (item.id === editingExpenseId ? expense : item));
+  } else {
+    expenses = [expense, ...expenses];
+  }
+  delete noSpendStamps[expense.date];
   saveExpenses();
+  saveNoSpendStamps();
   form.reset();
-  dateInput.valueAsDate = new Date();
+  dateInput.value = submittedDate;
+  clearEditState(false);
   receiptPreview.removeAttribute("src");
   receiptPreview.style.display = "none";
   render();
 });
 
-seedButton.addEventListener("click", () => {
-  expenses = [...sampleExpenses, ...expenses];
+seedButton?.addEventListener("click", () => {
+  expenses = normalizeExpenses([...sampleExpenses, ...expenses]);
   saveExpenses();
   render();
 });
@@ -200,14 +342,43 @@ function loadExpenses() {
   if (!saved) return [];
 
   try {
-    return JSON.parse(saved);
+    return normalizeExpenses(JSON.parse(saved));
   } catch {
     return [];
   }
 }
 
+function normalizeExpenses(items) {
+  return (Array.isArray(items) ? items : []).map((expense, index) => ({
+    ...expense,
+    id: expense.id || `${expense.date || "date"}-${expense.amount || 0}-${index}-${Date.now()}`,
+  }));
+}
+
 function saveExpenses() {
   localStorage.setItem(modeConfig[currentMode].storageKey, JSON.stringify(expenses));
+  queueCloudSave();
+}
+
+function createExpenseId() {
+  return `expense-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function loadNoSpendStamps() {
+  const saved = localStorage.getItem(`${modeConfig[currentMode].storageKey}-no-spend-stamps`);
+  if (!saved) return {};
+
+  try {
+    const parsed = JSON.parse(saved);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveNoSpendStamps() {
+  localStorage.setItem(`${modeConfig[currentMode].storageKey}-no-spend-stamps`, JSON.stringify(noSpendStamps));
+  queueCloudSave();
 }
 
 function loadBudgets() {
@@ -223,6 +394,109 @@ function loadBudgets() {
 
 function saveBudgets() {
   localStorage.setItem(`${modeConfig[currentMode].storageKey}-budgets`, JSON.stringify(budgets));
+  queueCloudSave();
+}
+
+function writeLocalCache() {
+  localStorage.setItem(modeConfig[currentMode].storageKey, JSON.stringify(expenses));
+  localStorage.setItem(`${modeConfig[currentMode].storageKey}-budgets`, JSON.stringify(budgets));
+  localStorage.setItem(`${modeConfig[currentMode].storageKey}-no-spend-stamps`, JSON.stringify(noSpendStamps));
+}
+
+function cloudDataRef(mode = currentMode) {
+  if (!authUser) return null;
+  if (mode === "couple") return doc(db, "couples", "kiku-kakeibo");
+  return doc(db, "users", authUser.uid, "scopes", "personal");
+}
+
+function queueCloudSave(immediate = false) {
+  if (!authUser || applyingCloudData) return;
+  window.clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = window.setTimeout(saveCloudData, immediate ? 0 : 500);
+}
+
+async function saveCloudData() {
+  const ref = cloudDataRef();
+  if (!ref) return;
+
+  try {
+    setSyncStatus("同期中...");
+    await setDoc(
+      ref,
+      {
+        expenses,
+        budgets,
+        noSpendStamps,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+    setSyncStatus("同期済み");
+  } catch (error) {
+    setSyncStatus("同期できませんでした");
+    console.error(error);
+  }
+}
+
+function subscribeCloudData() {
+  if (cloudUnsubscribe) cloudUnsubscribe();
+  cloudUnsubscribe = null;
+  window.clearTimeout(cloudSaveTimer);
+
+  const ref = cloudDataRef();
+  if (!ref) {
+    setSyncStatus("ログインが必要です");
+    return;
+  }
+
+  setSyncStatus("クラウド確認中...");
+  cloudUnsubscribe = onSnapshot(
+    ref,
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        setSyncStatus("初回同期中...");
+        queueCloudSave(true);
+        return;
+      }
+
+      const data = snapshot.data() || {};
+      applyingCloudData = true;
+      expenses = normalizeExpenses(data.expenses || []);
+      budgets = { ...defaultBudgets, ...(data.budgets || {}) };
+      noSpendStamps = data.noSpendStamps && typeof data.noSpendStamps === "object" ? data.noSpendStamps : {};
+      writeLocalCache();
+      applyingCloudData = false;
+      setSyncStatus(currentMode === "couple" ? "夫婦用を同期済み" : "個人用を同期済み");
+      render();
+    },
+    (error) => {
+      setSyncStatus("同期権限を確認してください");
+      console.error(error);
+    },
+  );
+}
+
+function setSyncStatus(message) {
+  if (syncStatus) syncStatus.textContent = message;
+}
+
+function setAuthMessage(message) {
+  if (authMessage) authMessage.textContent = message;
+}
+
+function firebaseAuthErrorMessage(error) {
+  const code = error?.code || "";
+  if (code.includes("invalid-credential") || code.includes("wrong-password") || code.includes("user-not-found")) {
+    return "メールアドレスまたはパスワードが違います。";
+  }
+  if (code.includes("too-many-requests")) return "ログイン試行が多すぎます。少し待ってから試してください。";
+  if (code.includes("network-request-failed")) return "通信できません。ネットワークを確認してください。";
+  return "ログインできませんでした。Firebaseの設定を確認してください。";
+}
+
+function updateAuthView() {
+  document.body.classList.toggle("auth-required", !authUser);
+  if (authGate) authGate.hidden = Boolean(authUser);
 }
 
 function yen(amount) {
@@ -467,6 +741,232 @@ function renderCategories() {
     .join("");
 }
 
+function renderCalendar() {
+  if (!calendarGrid || !calendarTotal) return;
+
+  const { start } = currentMonthRange(selectedMonthOffset);
+  const year = start.getFullYear();
+  const month = start.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const expensesByDate = dailyExpenseMap();
+  const total = Array.from(expensesByDate.values()).reduce((sum, day) => sum + day.total, 0);
+  const todayKey = formatDateLocal(new Date());
+  const cellCount = Math.ceil((firstWeekday + daysInMonth) / 7) * 7;
+
+  calendarTotal.textContent = yen(total);
+  calendarGrid.innerHTML = Array.from({ length: cellCount }, (_, index) => {
+    const day = index - firstWeekday + 1;
+    if (day < 1 || day > daysInMonth) {
+      return `<div class="calendar-day empty" aria-hidden="true"></div>`;
+    }
+
+    const date = new Date(year, month, day);
+    const dateKey = formatDateLocal(date);
+    const dayData = expensesByDate.get(dateKey);
+    const stamp = !dayData ? noSpendStamps[dateKey] : "";
+    const weekday = date.getDay();
+    const classes = [
+      "calendar-day",
+      dayData ? "has-expense" : "",
+      stamp ? "has-stamp" : "",
+      dateKey === todayKey ? "today" : "",
+      weekday === 0 ? "sunday" : "",
+      weekday === 6 ? "saturday" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const amount = dayData ? `<strong>${compactYen(dayData.total)}</strong>` : "";
+    const isFluffyStamp = stamp === "青もふ";
+    const stampTextClass = stamp && Array.from(stamp).length > 1 && !isFluffyStamp ? "is-text-stamp" : "";
+    const stampFluffyClass = isFluffyStamp ? "is-fluffy-stamp" : "";
+    const stampContent = isFluffyStamp ? `<span class="fluffy-face" aria-hidden="true"></span>` : stamp || "＋";
+    const stampButton = !dayData
+      ? `<button class="calendar-stamp-button ${stamp ? "is-stamped" : "add-stamp"} ${stampTextClass} ${stampFluffyClass}" type="button" data-stamp-date="${dateKey}" aria-label="${day}日に支出なしスタンプ">${stampContent}</button>`
+      : "";
+
+    return `
+      <div class="${classes}" aria-label="${day}日 ${dayData ? yen(dayData.total) : stamp ? `支出なし ${stamp}` : "支出なし"}">
+        <button class="calendar-date-button" type="button" data-calendar-date="${dateKey}">
+          <span>${day}</span>
+          ${amount}
+        </button>
+        ${stampButton}
+      </div>
+    `;
+  }).join("");
+}
+
+function dailyExpenseMap() {
+  const map = new Map();
+  const visibleExpenses = [...monthlyExpenses(), ...(budgets.rent ? [fixedRentExpense()] : [])];
+
+  visibleExpenses.forEach((expense) => {
+    const dateKey = expense.date;
+    const day = map.get(dateKey) || { total: 0, categories: new Map() };
+    day.total += expense.amount;
+    day.categories.set(expense.category, (day.categories.get(expense.category) || 0) + expense.amount);
+    map.set(dateKey, day);
+  });
+
+  return map;
+}
+
+function compactYen(amount) {
+  if (amount >= 10000) {
+    const value = Math.round(amount / 1000) / 10;
+    return `¥${value}万`;
+  }
+  return `¥${comma(amount)}`;
+}
+
+function openDateForInput(dateKey) {
+  dateInput.value = dateKey;
+  clearEditState(false);
+  renderSelectedDay();
+  navigateTo("#receipt");
+}
+
+function openStampSheet(dateKey) {
+  if (dailyExpenseMap().has(dateKey)) {
+    return;
+  }
+
+  pendingStampDate = dateKey;
+  const date = new Date(`${dateKey}T00:00:00`);
+  stampTargetLabel.textContent = `${date.getMonth() + 1}月${date.getDate()}日`;
+  stampPicker.hidden = false;
+  document.body.classList.add("stamp-sheet-open");
+  syncStampButtons();
+}
+
+function applyNoSpendStamp(stamp) {
+  if (!pendingStampDate) return;
+
+  noSpendStamps[pendingStampDate] = stamp;
+  saveNoSpendStamps();
+  closeStampSheet();
+  renderCalendar();
+}
+
+function clearNoSpendStamp() {
+  if (!pendingStampDate) return;
+
+  delete noSpendStamps[pendingStampDate];
+  saveNoSpendStamps();
+  closeStampSheet();
+  renderCalendar();
+}
+
+function closeStampSheet() {
+  pendingStampDate = "";
+  stampPicker.hidden = true;
+  document.body.classList.remove("stamp-sheet-open");
+}
+
+function navigateTo(nextView) {
+  if (window.location.hash !== nextView) {
+    history.pushState(null, "", nextView);
+  }
+  updateViewFromHash();
+}
+
+function startEditExpense(id) {
+  const expense = expenses.find((item) => item.id === id);
+  if (!expense) return;
+
+  editingExpenseId = id;
+  dateInput.value = expense.date;
+  memoInput.value = expense.memo;
+  amountInput.value = expense.amount;
+  categoryInput.value = expense.category;
+  selectedAdvancePayer = currentMode === "couple" ? advancePayerFor(expense) : "";
+  syncAdvanceButtons();
+  submitButton.textContent = "更新する";
+  cancelEditButton.hidden = false;
+  renderSelectedDay();
+  memoInput.focus();
+}
+
+function deleteExpense(id) {
+  const expense = expenses.find((item) => item.id === id);
+  if (!expense) return;
+  const ok = window.confirm(`${expense.memo}（${yen(expense.amount)}）を削除しますか？`);
+  if (!ok) return;
+
+  expenses = expenses.filter((item) => item.id !== id);
+  if (editingExpenseId === id) clearEditState(false);
+  saveExpenses();
+  render();
+}
+
+function clearEditState(resetForm = true) {
+  editingExpenseId = "";
+  if (resetForm) {
+    form.reset();
+    dateInput.valueAsDate = new Date();
+    selectedAdvancePayer = "";
+    syncAdvanceButtons();
+  }
+  submitButton.textContent = "登録する";
+  cancelEditButton.hidden = true;
+  renderSelectedDay();
+}
+
+function syncAdvanceButtons() {
+  document.querySelectorAll("[data-advance-payer]").forEach((button) => {
+    button.classList.toggle("selected", button.dataset.advancePayer === selectedAdvancePayer);
+  });
+}
+
+function renderSelectedDay() {
+  if (!selectedDateLabel || !selectedDateTotal || !selectedDayExpenses) return;
+
+  const dateKey = dateInput.value || formatDateLocal(new Date());
+  const entries = expenses
+    .filter((expense) => expense.date === dateKey)
+    .sort((a, b) => b.amount - a.amount);
+  const fixed = budgets.rent && dateKey === formatDateLocal(currentMonthRange(selectedMonthOffset).start) ? [fixedRentExpense()] : [];
+  const total = [...entries, ...fixed].reduce((sum, expense) => sum + expense.amount, 0);
+  const date = new Date(`${dateKey}T00:00:00`);
+  selectedDateLabel.textContent = `${date.getMonth() + 1}月${date.getDate()}日の登録`;
+  selectedDateTotal.textContent = yen(total);
+
+  if (!entries.length && !fixed.length) {
+    selectedDayExpenses.innerHTML = `<p class="expense-meta">この日はまだ登録がありません。</p>`;
+    return;
+  }
+
+  selectedDayExpenses.innerHTML = [
+    ...fixed.map(
+      (expense) => `
+        <article class="selected-day-item fixed">
+          <div>
+            <strong>${expense.memo}</strong>
+            <span>${expense.category}</span>
+          </div>
+          <b>${yen(expense.amount)}</b>
+        </article>
+      `,
+    ),
+    ...entries.map(
+      (expense) => `
+        <article class="selected-day-item ${expense.id === editingExpenseId ? "editing" : ""}">
+          <div class="selected-day-main">
+            <strong>${expense.memo}</strong>
+            <span>${expense.category}${currentMode === "couple" ? `・${paymentLabel(expense)}` : ""}</span>
+          </div>
+          <b>${yen(expense.amount)}</b>
+          <div class="selected-day-actions" aria-label="操作">
+            <button class="icon-button" type="button" data-edit-expense="${expense.id}" aria-label="編集" title="編集">✎</button>
+            <button class="icon-button danger" type="button" data-delete-expense="${expense.id}" aria-label="削除" title="削除">×</button>
+          </div>
+        </article>
+      `,
+    ),
+  ].join("");
+}
+
 function sortCategoryTotals(totals) {
   const fixedOrder = { 光熱費: 1, 家賃: 2 };
   return [...totals].sort((a, b) => {
@@ -579,6 +1079,7 @@ function renderCategoryPieLegend(data, total) {
 
 function renderExpenses() {
   const list = document.querySelector("#expenseList");
+  if (!list) return;
   const fixedExpenses = budgets.rent ? [fixedRentExpense()] : [];
   const visible = [...fixedExpenses, ...monthlyExpenses()].slice(0, 8);
 
@@ -625,7 +1126,9 @@ function render() {
   renderMetrics();
   renderTrendChart();
   renderCategories();
+  renderCalendar();
   renderExpenses();
+  renderSelectedDay();
   renderAdvice();
   updateViewFromHash();
 }
@@ -633,16 +1136,24 @@ function render() {
 function switchMode(mode) {
   if (!modeConfig[mode] || mode === currentMode) return;
 
+  const activeHash = window.location.hash || "#dashboard";
   currentMode = mode;
   localStorage.setItem("budget-app-mode", currentMode);
   selectedAdvancePayer = "";
   expenses = loadExpenses();
   budgets = loadBudgets();
+  noSpendStamps = loadNoSpendStamps();
   form.reset();
   dateInput.valueAsDate = new Date();
+  clearEditState(false);
   receiptPreview.removeAttribute("src");
   receiptPreview.style.display = "none";
   render();
+  subscribeCloudData();
+  if (window.location.hash !== activeHash) {
+    history.replaceState(null, "", activeHash);
+  }
+  updateViewFromHash();
 }
 
 function renderMode() {
@@ -660,6 +1171,13 @@ function renderMode() {
 
   document.querySelectorAll("[data-mode]").forEach((button) => {
     button.classList.toggle("selected", button.dataset.mode === currentMode);
+  });
+  syncStampButtons();
+}
+
+function syncStampButtons() {
+  document.querySelectorAll("[data-stamp]").forEach((button) => {
+    button.classList.toggle("selected", button.dataset.stamp === selectedStamp);
   });
 }
 
@@ -878,13 +1396,16 @@ function renderTrendSummary(data) {
 
 window.addEventListener("resize", renderTrendChart);
 
-if ("serviceWorker" in navigator && window.isSecureContext) {
-  navigator.serviceWorker.register("./sw.js").catch(() => {});
-}
-
 function updateViewFromHash() {
   const view = (window.location.hash || "#dashboard").replace("#", "");
   const views = ["dashboard", "receipt", "budget", "trend", "analysis"];
+  const viewLabels = {
+    dashboard: "今月",
+    receipt: "入力",
+    budget: "予算",
+    trend: "グラフ",
+    analysis: "分析",
+  };
   const activeView = views.includes(view) ? view : "dashboard";
 
   views.forEach((item) => {
@@ -897,13 +1418,39 @@ function updateViewFromHash() {
     link.classList.toggle("active", link.getAttribute("href") === `#${activeView}`);
   });
 
+  if (viewTitle) viewTitle.textContent = viewLabels[activeView];
   if (activeView === "trend") renderTrendChart();
   requestAnimationFrame(() => {
-    document.querySelector(`#${activeView}`)?.scrollIntoView({ block: "start" });
+    window.scrollTo({ top: 0, left: 0 });
   });
   if (!views.includes(view)) {
-    window.location.hash = "#dashboard";
+    history.replaceState(null, "", "#dashboard");
+    updateViewFromHash();
   }
 }
+
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register("./sw.js").catch(() => {});
+}
+
+onAuthStateChanged(auth, (user) => {
+  authUser = user;
+  updateAuthView();
+
+  if (!user) {
+    if (cloudUnsubscribe) cloudUnsubscribe();
+    cloudUnsubscribe = null;
+    setSyncStatus("ログインが必要です");
+    setAuthMessage("Firebaseに登録済みの家族アカウントでログインしてください。");
+    return;
+  }
+
+  setAuthMessage("");
+  expenses = loadExpenses();
+  budgets = loadBudgets();
+  noSpendStamps = loadNoSpendStamps();
+  render();
+  subscribeCloudData();
+});
 
 render();

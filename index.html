@@ -12,7 +12,30 @@
     <link rel="apple-touch-icon" href="./icon.svg" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body class="view-dashboard">
+  <body class="view-dashboard auth-required">
+    <section class="auth-gate" id="authGate" aria-label="ログイン">
+      <div class="auth-card">
+        <div class="brand">
+          <div class="brand-mark">¥</div>
+          <div>
+            <p class="eyebrow">Private budget</p>
+            <h1>ふたり家計ノート</h1>
+          </div>
+        </div>
+        <form class="auth-form" id="loginForm">
+          <label>
+            メールアドレス
+            <input id="loginEmail" type="email" autocomplete="username" required />
+          </label>
+          <label>
+            パスワード
+            <input id="loginPassword" type="password" autocomplete="current-password" required />
+          </label>
+          <button class="submit-button" type="submit">ログイン</button>
+        </form>
+        <p class="auth-message" id="authMessage">Firebaseに登録済みの家族アカウントでログインしてください。</p>
+      </div>
+    </section>
     <div class="app-shell">
       <aside class="sidebar" aria-label="ナビゲーション">
         <div class="brand">
@@ -37,37 +60,45 @@
       </aside>
 
       <main>
+        <section class="app-context" aria-label="家計簿の切り替え">
+          <div>
+            <span id="viewTitle">今月</span>
+            <strong id="modeLabel">夫婦用（共有予定）</strong>
+            <small id="syncStatus">ログイン確認中</small>
+          </div>
+          <div class="mode-switcher" aria-label="利用モード">
+            <div class="mode-toggle" role="group" aria-label="利用モードを選択">
+              <button class="selected" type="button" data-mode="couple">夫婦</button>
+              <button type="button" data-mode="personal">個人</button>
+            </div>
+            <button class="sign-out-button" id="signOutButton" type="button">ログアウト</button>
+          </div>
+        </section>
+
         <section class="hero" id="dashboard">
           <div>
             <p class="eyebrow" id="monthLabel">今月</p>
             <h2 id="heroTitle">生活費全体を見ながら、外食の使いすぎも逃さない。</h2>
           </div>
-          <button class="primary-action" id="openReceiptButton" type="button" aria-label="入力画面へ移動">＋ 入力</button>
-        </section>
-
-        <section class="mode-switcher" aria-label="利用モード">
-          <div>
-            <span>利用モード</span>
-            <strong id="modeLabel">夫婦用</strong>
+          <div class="hero-controls">
+            <label class="month-compact">
+              <span>表示月</span>
+              <select id="monthSelect"></select>
+            </label>
+            <button class="primary-action" id="openReceiptButton" type="button" aria-label="入力画面へ移動">＋ 入力</button>
           </div>
-          <div class="mode-toggle" role="group" aria-label="利用モードを選択">
-            <button class="selected" type="button" data-mode="couple">夫婦</button>
-            <button type="button" data-mode="personal">個人</button>
-          </div>
-        </section>
-
-        <section class="month-switcher" aria-label="表示月">
-          <label>
-            表示月
-            <select id="monthSelect"></select>
-          </label>
         </section>
 
         <section class="metrics" aria-label="今月の概要">
-          <article>
+          <article class="metric-primary">
             <span>今月の生活費</span>
             <strong id="totalSpend">¥0</strong>
             <small id="totalTrend">データを入力してください</small>
+          </article>
+          <article class="metric-primary">
+            <span>残り予算</span>
+            <strong id="remainingBudget">¥0</strong>
+            <small id="budgetStatus">予算内</small>
           </article>
           <article>
             <span>食費</span>
@@ -79,11 +110,56 @@
             <strong id="diningSpend">¥0</strong>
             <small id="diningShare">食費の0%</small>
           </article>
-          <article>
-            <span>残り予算</span>
-            <strong id="remainingBudget">¥0</strong>
-            <small id="budgetStatus">予算内</small>
-          </article>
+        </section>
+
+        <section class="panel calendar-panel" id="calendar" aria-label="日別支出カレンダー">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Calendar</p>
+              <h3>日別の支出</h3>
+            </div>
+            <strong id="calendarTotal">¥0</strong>
+          </div>
+          <div class="calendar-weekdays" aria-hidden="true">
+            <span>日</span>
+            <span>月</span>
+            <span>火</span>
+            <span>水</span>
+            <span>木</span>
+            <span>金</span>
+            <span>土</span>
+          </div>
+          <div class="calendar-grid" id="calendarGrid"></div>
+        </section>
+
+        <section class="stamp-picker" id="stampPicker" aria-label="支出なしスタンプ" hidden>
+          <div class="stamp-sheet">
+            <div class="stamp-sheet-header">
+              <div>
+                <span id="stampTargetLabel">支出なしスタンプ</span>
+                <strong>今日使わなかった記録</strong>
+              </div>
+              <button class="icon-button" type="button" id="closeStampPicker" aria-label="閉じる">×</button>
+            </div>
+            <div class="stamp-options">
+              <button type="button" data-stamp="🐱" aria-label="猫">🐱</button>
+              <button type="button" data-stamp="🐶" aria-label="犬">🐶</button>
+              <button type="button" data-stamp="🐰" aria-label="うさぎ">🐰</button>
+              <button type="button" data-stamp="🐼" aria-label="パンダ">🐼</button>
+              <button type="button" data-stamp="🐻" aria-label="くま">🐻</button>
+              <button type="button" data-stamp="🐥" aria-label="ひよこ">🐥</button>
+              <button type="button" data-stamp="🌸" aria-label="花">🌸</button>
+              <button type="button" data-stamp="⭐" aria-label="星">⭐</button>
+              <button type="button" data-stamp="🍀" aria-label="クローバー">🍀</button>
+              <button type="button" data-stamp="☕" aria-label="コーヒー">☕</button>
+              <button type="button" data-stamp="🏆" aria-label="ごほうび">🏆</button>
+              <button class="text-stamp" type="button" data-stamp="スン" aria-label="スンスン風">スン</button>
+              <button class="fluffy-stamp" type="button" data-stamp="青もふ" aria-label="青いもふもふ">
+                <span class="fluffy-face" aria-hidden="true"></span>
+              </button>
+            </div>
+            <button class="clear-stamp-button" type="button" id="clearStampButton">スタンプを外す</button>
+          </div>
         </section>
 
         <section class="panel budget-panel app-section" id="budget" aria-label="予算設定">
@@ -204,8 +280,17 @@
                   <option value="その他">その他</option>
                 </select>
               </label>
+              <button class="cancel-edit-button" id="cancelEditButton" type="button" hidden>編集をやめる</button>
               <button class="submit-button" type="submit">登録する</button>
             </form>
+
+            <div class="selected-day-panel" id="selectedDayPanel">
+              <div>
+                <span id="selectedDateLabel">今日の登録</span>
+                <strong id="selectedDateTotal">¥0</strong>
+              </div>
+              <div class="selected-day-list" id="selectedDayExpenses"></div>
+            </div>
           </section>
 
           <section class="panel" id="analysis">
@@ -222,17 +307,6 @@
         </section>
 
         <section class="wide-grid">
-          <section class="panel" id="history">
-            <div class="panel-header">
-              <div>
-                <p class="eyebrow">History</p>
-                <h3>最近の登録</h3>
-              </div>
-              <button class="ghost-button" id="seedButton" type="button">サンプル投入</button>
-            </div>
-            <div class="expense-list" id="expenseList"></div>
-          </section>
-
           <section class="panel advice-panel" id="advice">
             <div class="panel-header">
               <div>
@@ -246,6 +320,6 @@
       </main>
     </div>
 
-    <script src="./script.js"></script>
+    <script type="module" src="./script.js"></script>
   </body>
 </html>
