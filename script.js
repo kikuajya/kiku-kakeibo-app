@@ -27,7 +27,7 @@ const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 const tesseractScriptUrl = "https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/tesseract.min.js";
-const receiptOcrLanguages = ["jpn", "eng"];
+const receiptOcrLanguage = "eng";
 
 const defaultBudgets = {
   total: 320000,
@@ -598,27 +598,37 @@ async function readTextWithNativeDetector(file) {
 }
 
 async function readTextWithTesseract(file) {
+  let worker = null;
   try {
     setScanStatus("warning", "無料OCRを準備中", "写真は外部AIに送らず、ブラウザ内で文字を読み取ります。");
     const { createWorker } = await loadTesseract();
-    const worker = await createWorker(receiptOcrLanguages, 1, {
+    worker = await createWorker(receiptOcrLanguage, 1, {
       logger: (message) => updateOcrProgress(message),
     });
 
     await worker.setParameters({
       preserve_interword_spaces: "1",
+      tessedit_pageseg_mode: "6",
+      tessedit_char_whitelist: "0123456789,.¥￥円YENyenTOTALtotalTax税合計小計税込お会計現計",
+      user_defined_dpi: "300",
     });
 
-    const image = await prepareReceiptImage(file);
-    setScanStatus("warning", "レシートを読み取り中", "金額と店名の候補を探しています。");
-    const {
-      data: { text },
-    } = await worker.recognize(image);
-    await worker.terminate();
-    return text.trim();
+    const images = await prepareReceiptImages(file);
+    const results = [];
+    for (const [index, image] of images.entries()) {
+      setScanStatus("warning", `レシートを読み取り中 ${index + 1}/${images.length}`, "金額候補を優先して探しています。");
+      const {
+        data: { text },
+      } = await worker.recognize(image.src);
+      results.push(`${image.label}\n${text}`);
+      if (extractAmountCandidates(results.join("\n")).length >= 3) break;
+    }
+    return results.join("\n").trim();
   } catch (error) {
     console.error(error);
     return "";
+  } finally {
+    if (worker) await worker.terminate();
   }
 }
 
@@ -662,9 +672,9 @@ function updateOcrProgress(message) {
   setScanStatus("warning", `${statusMap[message.status] || "OCR処理中"}${suffix}`, "初回は時間がかかります。次回以降は少し速くなります。");
 }
 
-async function prepareReceiptImage(file) {
+async function prepareReceiptImages(file) {
   const bitmap = await createImageBitmap(file);
-  const maxWidth = 1500;
+  const maxWidth = 1800;
   const scale = Math.min(1, maxWidth / bitmap.width);
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(bitmap.width * scale);
@@ -674,17 +684,57 @@ async function prepareReceiptImage(file) {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
 
+  const enhanced = enhanceReceiptCanvas(canvas, { threshold: false });
+  const threshold = enhanceReceiptCanvas(canvas, { threshold: true });
+  const bottomCrop = cropCanvas(enhanced, 0.2, 1);
+
+  return [
+    { label: "補正画像", src: enhanced.toDataURL("image/png") },
+    { label: "白黒補正", src: threshold.toDataURL("image/png") },
+    { label: "下部候補", src: bottomCrop.toDataURL("image/png") },
+  ];
+}
+
+function enhanceReceiptCanvas(sourceCanvas, options = {}) {
+  const canvas = document.createElement("canvas");
+  canvas.width = sourceCanvas.width;
+  canvas.height = sourceCanvas.height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(sourceCanvas, 0, 0);
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const pixels = imageData.data;
+  const grayscale = [];
+
   for (let i = 0; i < pixels.length; i += 4) {
     const gray = pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114;
-    const contrasted = Math.max(0, Math.min(255, (gray - 128) * 1.35 + 128));
-    pixels[i] = contrasted;
-    pixels[i + 1] = contrasted;
-    pixels[i + 2] = contrasted;
+    grayscale.push(gray);
+  }
+
+  const average = grayscale.reduce((sum, value) => sum + value, 0) / Math.max(grayscale.length, 1);
+
+  for (let i = 0; i < pixels.length; i += 4) {
+    const gray = grayscale[i / 4];
+    let value = Math.max(0, Math.min(255, (gray - 128) * 1.85 + 138));
+    if (options.threshold) {
+      value = gray > average * 0.92 ? 255 : 0;
+    }
+    pixels[i] = value;
+    pixels[i + 1] = value;
+    pixels[i + 2] = value;
   }
   ctx.putImageData(imageData, 0, 0);
-  return canvas.toDataURL("image/jpeg", 0.92);
+  return canvas;
+}
+
+function cropCanvas(sourceCanvas, startRatio, endRatio) {
+  const y = Math.round(sourceCanvas.height * startRatio);
+  const height = Math.max(1, Math.round(sourceCanvas.height * (endRatio - startRatio)));
+  const canvas = document.createElement("canvas");
+  canvas.width = sourceCanvas.width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(sourceCanvas, 0, y, sourceCanvas.width, height, 0, 0, canvas.width, canvas.height);
+  return canvas;
 }
 
 function extractAmountCandidates(text) {
@@ -719,7 +769,11 @@ function extractAmount(text) {
 }
 
 function extractNumbers(line) {
-  const normalized = String(line || "").replace(/[，,]/g, "");
+  const normalized = String(line || "")
+    .replace(/[，,]/g, "")
+    .replace(/[Oo]/g, "0")
+    .replace(/[Il|]/g, "1")
+    .replace(/[Ss]/g, "5");
   const matches = normalized.match(/(?:¥|円)?\s*\d{2,7}\s*(?:円|yen)?/gi) || [];
   return matches.map((match) => Number(match.replace(/[^\d]/g, ""))).filter(Boolean);
 }
@@ -727,8 +781,9 @@ function extractNumbers(line) {
 function amountLineScore(line, index, lineCount) {
   const source = normalizeText(line);
   let score = 0;
-  if (/合計|総合計|税込|お買上|お会計|現計|請求|金額|total|amount/.test(source)) score += 100;
-  if (/小計|税|消費税|内税/.test(source)) score += 20;
+  if (/合計|総合計|税込|お買上|お会計|現計|請求|金額|total|amount|yen|ttl/.test(source)) score += 100;
+  if (/小計|税|消費税|内税|tax/.test(source)) score += 20;
+  if (/補正画像|白黒補正|下部候補/.test(line)) score += 6;
   if (/お預|預り|釣|お釣|釣銭|ポイント|会員|電話|tel|no\.|番号/.test(source)) score -= 80;
   if (/\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}:\d{2}/.test(line)) score -= 60;
   score += Math.round((index / Math.max(lineCount - 1, 1)) * 10);
@@ -751,16 +806,16 @@ function applyReceiptDraft(draft) {
 
   if (draft.usedOcr && draft.amount) {
     const engineLabel = draft.ocrEngine === "tesseract" ? "無料OCR" : "端末内OCR";
-    setScanStatus("ready", `${engineLabel}で候補を出しました`, "下の候補から正しい金額を選び、内容を確認してから登録してください。");
+    setScanStatus("ready", `${engineLabel}で金額候補を出しました`, "下の候補から正しい金額を選び、内容を確認してから登録してください。");
     return;
   }
 
   if (draft.usedOcr) {
-    setScanStatus("warning", "文字は読めましたが金額候補が弱いです", "店名やカテゴリは候補を入れました。金額だけ確認して入力してください。");
+    setScanStatus("warning", "文字は読めましたが金額候補が弱いです", "読み取った文字を開いて確認できます。金額は手入力してください。");
     return;
   }
 
-  setScanStatus("warning", "写真を読み取れませんでした", "明るい場所でレシート全体をまっすぐ撮ると読み取りやすくなります。");
+  setScanStatus("warning", "写真を読み取れませんでした", "無料OCRではこの写真の文字を拾えませんでした。明るい場所で、レシートを画面いっぱいにまっすぐ撮ると改善します。");
 }
 
 function renderOcrReview(draft) {
