@@ -26,6 +26,8 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
+const tesseractScriptUrl = "https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/tesseract.min.js";
+const receiptOcrLanguages = ["jpn", "eng"];
 
 const defaultBudgets = {
   total: 320000,
@@ -297,7 +299,7 @@ receiptInput.addEventListener("change", async () => {
 
   receiptPreview.src = URL.createObjectURL(file);
   receiptPreview.style.display = "block";
-  setScanStatus("warning", "無料OCRを確認中", "この端末のブラウザで使える読み取り機能だけを使います。");
+  setScanStatus("warning", "写真を読み取り中", "初回は無料OCRの準備に少し時間がかかります。画面を閉じずにお待ちください。");
   applyReceiptDraft(await readReceiptDraft(file));
 });
 
@@ -534,21 +536,37 @@ function normalizeText(text) {
 
 async function readReceiptDraft(file) {
   const fileHint = file.name.replace(/\.[^.]+$/, "");
-  const localText = await readTextOnDevice(file);
-  const sourceText = [localText, fileHint].filter(Boolean).join(" ");
+  const ocrResult = await readTextOnDevice(file);
+  const localText = ocrResult.text;
+  const sourceText = [localText, fileHint].filter(Boolean).join("\n");
   const amount = extractAmount(sourceText);
   const category = guessCategory(sourceText);
 
   return {
     amount,
     category,
-    memo: guessMemo(sourceText) || "レシート内容",
+    memo: guessMemo(sourceText, fileHint) || "レシート内容",
     confidence: amount && localText ? "ready" : "warning",
     usedOcr: Boolean(localText),
+    ocrEngine: ocrResult.engine,
   };
 }
 
 async function readTextOnDevice(file) {
+  const nativeText = await readTextWithNativeDetector(file);
+  if (nativeText) {
+    return { text: nativeText, engine: "native" };
+  }
+
+  const tesseractText = await readTextWithTesseract(file);
+  if (tesseractText) {
+    return { text: tesseractText, engine: "tesseract" };
+  }
+
+  return { text: "", engine: "" };
+}
+
+async function readTextWithNativeDetector(file) {
   if (!("TextDetector" in window)) return "";
 
   try {
@@ -561,10 +579,133 @@ async function readTextOnDevice(file) {
   }
 }
 
+async function readTextWithTesseract(file) {
+  try {
+    setScanStatus("warning", "無料OCRを準備中", "写真は外部AIに送らず、ブラウザ内で文字を読み取ります。");
+    const { createWorker } = await loadTesseract();
+    const worker = await createWorker(receiptOcrLanguages, 1, {
+      logger: (message) => updateOcrProgress(message),
+    });
+
+    await worker.setParameters({
+      preserve_interword_spaces: "1",
+    });
+
+    const image = await prepareReceiptImage(file);
+    setScanStatus("warning", "レシートを読み取り中", "金額と店名の候補を探しています。");
+    const {
+      data: { text },
+    } = await worker.recognize(image);
+    await worker.terminate();
+    return text.trim();
+  } catch (error) {
+    console.error(error);
+    return "";
+  }
+}
+
+function loadTesseract() {
+  if (window.Tesseract?.createWorker) return Promise.resolve(window.Tesseract);
+
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`[src="${tesseractScriptUrl}"]`);
+    if (existing) {
+      existing.addEventListener("load", () => resolve(window.Tesseract), { once: true });
+      existing.addEventListener("error", reject, { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = tesseractScriptUrl;
+    script.async = true;
+    script.onload = () => {
+      if (window.Tesseract?.createWorker) {
+        resolve(window.Tesseract);
+        return;
+      }
+      reject(new Error("Tesseract.jsを読み込めませんでした。"));
+    };
+    script.onerror = reject;
+    document.head.append(script);
+  });
+}
+
+function updateOcrProgress(message) {
+  if (!message?.status) return;
+  const progress = typeof message.progress === "number" ? Math.round(message.progress * 100) : null;
+  const suffix = progress !== null && progress > 0 ? ` ${progress}%` : "";
+  const statusMap = {
+    "loading tesseract core": "OCRエンジンを準備中",
+    "initializing tesseract": "OCRエンジンを初期化中",
+    "loading language traineddata": "日本語読み取りデータを準備中",
+    "initializing api": "読み取り設定を準備中",
+    "recognizing text": "レシートを読み取り中",
+  };
+  setScanStatus("warning", `${statusMap[message.status] || "OCR処理中"}${suffix}`, "初回は時間がかかります。次回以降は少し速くなります。");
+}
+
+async function prepareReceiptImage(file) {
+  const bitmap = await createImageBitmap(file);
+  const maxWidth = 1500;
+  const scale = Math.min(1, maxWidth / bitmap.width);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const pixels = imageData.data;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const gray = pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114;
+    const contrasted = Math.max(0, Math.min(255, (gray - 128) * 1.35 + 128));
+    pixels[i] = contrasted;
+    pixels[i + 1] = contrasted;
+    pixels[i + 2] = contrasted;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas.toDataURL("image/jpeg", 0.92);
+}
+
 function extractAmount(text) {
-  const normalized = String(text || "").replace(/[,，]/g, "");
-  const match = normalized.match(/(?:yen|円|¥)?\s*(\d{2,7})(?:yen|円)?/i);
-  return match ? Number(match[1]) : null;
+  const lines = String(text || "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const candidates = [];
+
+  lines.forEach((line, index) => {
+    extractNumbers(line).forEach((amount) => {
+      if (amount < 10 || amount > 999999) return;
+      candidates.push({
+        amount,
+        score: amountLineScore(line, index, lines.length),
+      });
+    });
+  });
+
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => b.score - a.score || b.amount - a.amount);
+  return candidates[0].amount;
+}
+
+function extractNumbers(line) {
+  const normalized = String(line || "").replace(/[，,]/g, "");
+  const matches = normalized.match(/(?:¥|円)?\s*\d{2,7}\s*(?:円|yen)?/gi) || [];
+  return matches.map((match) => Number(match.replace(/[^\d]/g, ""))).filter(Boolean);
+}
+
+function amountLineScore(line, index, lineCount) {
+  const source = normalizeText(line);
+  let score = 0;
+  if (/合計|総合計|税込|お買上|お会計|現計|請求|金額|total|amount/.test(source)) score += 100;
+  if (/小計|税|消費税|内税/.test(source)) score += 20;
+  if (/お預|預り|釣|お釣|釣銭|ポイント|会員|電話|tel|no\.|番号/.test(source)) score -= 80;
+  if (/\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}:\d{2}/.test(line)) score -= 60;
+  score += Math.round((index / Math.max(lineCount - 1, 1)) * 10);
+  return score;
 }
 
 function cleanupMemo(text) {
@@ -581,15 +722,28 @@ function applyReceiptDraft(draft) {
   if (draft.amount) amountInput.value = draft.amount;
 
   if (draft.usedOcr && draft.amount) {
-    setScanStatus("ready", "端末内OCRで候補を入力しました", "写真は外部送信していません。内容を確認して登録できます。");
+    const engineLabel = draft.ocrEngine === "tesseract" ? "無料OCR" : "端末内OCR";
+    setScanStatus("ready", `${engineLabel}で候補を入力しました`, "写真は有料AIに送っていません。金額とカテゴリを確認して登録できます。");
     return;
   }
 
-  setScanStatus("warning", "無料モードで候補を入力しました", "このブラウザでは端末内OCRが使えないため、金額を手入力してください。カテゴリは店名やメモから推測します。");
+  if (draft.usedOcr) {
+    setScanStatus("warning", "文字は読めましたが金額候補が弱いです", "店名やカテゴリは候補を入れました。金額だけ確認して入力してください。");
+    return;
+  }
+
+  setScanStatus("warning", "写真を読み取れませんでした", "明るい場所でレシート全体をまっすぐ撮ると読み取りやすくなります。");
 }
 
-function guessMemo(text) {
-  const cleaned = cleanupMemo(text);
+function guessMemo(text, fallback = "") {
+  const lines = String(text || "")
+    .split(/\n+/)
+    .map((line) => cleanupMemo(line))
+    .filter((line) => line.length >= 2 && line.length <= 24);
+  const line = lines.find((item) => !/合計|小計|税込|税|領収|レシート|電話|tel|登録|担当|円|¥|\d{2,}/i.test(item));
+  if (line) return line;
+
+  const cleaned = cleanupMemo(fallback || text);
   const words = cleaned.split(/\s+/).filter((word) => word && !/^\d+$/.test(word));
   return words.slice(0, 3).join(" ");
 }
