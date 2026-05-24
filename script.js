@@ -27,7 +27,8 @@ const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 const tesseractScriptUrl = "https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/tesseract.min.js";
-const receiptOcrLanguage = "eng";
+const receiptAmountOcrLanguage = "eng";
+const receiptTextOcrLanguages = ["jpn", "eng"];
 
 const defaultBudgets = {
   total: 320000,
@@ -80,6 +81,14 @@ const categoryKeywords = {
   家賃: ["家賃", "賃料", "管理費", "rent"],
   臨時出費: ["臨時", "お歳暮", "お中元", "祝い", "香典", "プレゼント", "帰省", "旅行", "修理", "特別", "gift", "special"],
 };
+
+const storeCategoryRules = [
+  { category: "外食費", keywords: ["マクドナルド", "マック", "モス", "ケンタッキー", "すき家", "吉野家", "松屋", "丸亀", "サイゼ", "ガスト", "ジョナサン", "バーミヤン", "スターバックス", "スタバ", "ドトール", "タリーズ", "コメダ", "ラーメン", "寿司", "焼肉", "居酒屋", "レストラン", "カフェ"] },
+  { category: "食費", keywords: ["イオン", "西友", "ライフ", "マルエツ", "オーケー", "okストア", "okstore", "成城石井", "コープ", "生協", "業務スーパー", "まいばすけっと", "ヨーク", "イトーヨーカドー", "サミット", "ベルク", "ヤオコー", "ロピア", "スーパー", "青果", "精肉", "鮮魚", "惣菜"] },
+  { category: "日用品", keywords: ["マツモトキヨシ", "マツキヨ", "ウエルシア", "サンドラッグ", "ココカラファイン", "スギ薬局", "ツルハ", "ドラッグ", "薬局", "ダイソー", "セリア", "キャンドゥ", "無印良品", "ニトリ"] },
+  { category: "娯楽費", keywords: ["映画", "シネマ", "カラオケ", "ゲーム", "ブックオフ", "書店", "チケット"] },
+  { category: "交通費", keywords: ["jr", "suica", "pasmo", "タクシー", "駐車", "ガソリン", "eneos", "出光", "apollostation"] },
+];
 
 const sampleExpenses = [
   { date: "2026-05-02", memo: "スーパー食材", amount: 8420, category: "食費", payer: "共有", advancePayer: "" },
@@ -539,6 +548,10 @@ function percent(value, total) {
 
 function guessCategory(text) {
   const source = normalizeText(text);
+  for (const rule of storeCategoryRules) {
+    if (rule.keywords.some((keyword) => source.includes(normalizeText(keyword)))) return rule.category;
+  }
+
   for (const [category, keywords] of Object.entries(categoryKeywords)) {
     if (keywords.some((keyword) => source.includes(normalizeText(keyword)))) return category;
   }
@@ -556,13 +569,16 @@ async function readReceiptDraft(file) {
   const sourceText = [localText, fileHint].filter(Boolean).join("\n");
   const amountCandidates = extractAmountCandidates(sourceText);
   const amount = amountCandidates[0]?.amount || null;
-  const category = guessCategory(sourceText);
+  const receiptDate = extractReceiptDate(sourceText);
+  const storeName = guessStoreName(sourceText, fileHint);
+  const category = guessCategory([storeName, sourceText].filter(Boolean).join("\n"));
 
   return {
     amount,
     amountCandidates,
+    date: receiptDate,
     category,
-    memo: guessMemo(sourceText, fileHint) || "レシート内容",
+    memo: storeName || guessMemo(sourceText, fileHint) || "レシート内容",
     confidence: amount && localText ? "ready" : "warning",
     usedOcr: Boolean(localText),
     ocrEngine: ocrResult.engine,
@@ -598,15 +614,16 @@ async function readTextWithNativeDetector(file) {
 }
 
 async function readTextWithTesseract(file) {
-  let worker = null;
+  let amountWorker = null;
+  let textWorker = null;
   try {
     setScanStatus("warning", "無料OCRを準備中", "写真は外部AIに送らず、ブラウザ内で文字を読み取ります。");
     const { createWorker } = await loadTesseract();
-    worker = await createWorker(receiptOcrLanguage, 1, {
+    amountWorker = await createWorker(receiptAmountOcrLanguage, 1, {
       logger: (message) => updateOcrProgress(message),
     });
 
-    await worker.setParameters({
+    await amountWorker.setParameters({
       preserve_interword_spaces: "1",
       tessedit_pageseg_mode: "6",
       tessedit_char_whitelist: "0123456789,.¥￥円YENyenTOTALtotalTax税合計小計税込お会計現計",
@@ -619,16 +636,39 @@ async function readTextWithTesseract(file) {
       setScanStatus("warning", `レシートを読み取り中 ${index + 1}/${images.length}`, "金額候補を優先して探しています。");
       const {
         data: { text },
-      } = await worker.recognize(image.src);
+      } = await amountWorker.recognize(image.src);
       results.push(`${image.label}\n${text}`);
       if (extractAmountCandidates(results.join("\n")).length >= 3) break;
     }
+
+    await amountWorker.terminate();
+    amountWorker = null;
+
+    setScanStatus("warning", "日付と店舗名を読み取り中", "店名からカテゴリも推測します。");
+    textWorker = await createWorker(receiptTextOcrLanguages, 1, {
+      logger: (message) => updateOcrProgress(message),
+    });
+    await textWorker.setParameters({
+      preserve_interword_spaces: "1",
+      tessedit_pageseg_mode: "6",
+      user_defined_dpi: "300",
+    });
+    const textImages = images.filter((image) => image.label !== "白黒補正").slice(0, 2);
+    for (const [index, image] of textImages.entries()) {
+      setScanStatus("warning", `日付と店舗名を読み取り中 ${index + 1}/${textImages.length}`, "金額候補とは別に文字も確認しています。");
+      const {
+        data: { text },
+      } = await textWorker.recognize(image.src);
+      results.push(`${image.label} 文字\n${text}`);
+    }
+
     return results.join("\n").trim();
   } catch (error) {
     console.error(error);
     return "";
   } finally {
-    if (worker) await worker.terminate();
+    if (amountWorker) await amountWorker.terminate();
+    if (textWorker) await textWorker.terminate();
   }
 }
 
@@ -768,6 +808,38 @@ function extractAmount(text) {
   return extractAmountCandidates(text)[0]?.amount || null;
 }
 
+function extractReceiptDate(text) {
+  const now = new Date();
+  const source = String(text || "")
+    .replace(/[年月]/g, "/")
+    .replace(/[日.]/g, " ")
+    .replace(/[（(].*?[）)]/g, " ");
+  const patterns = [
+    /((?:20)?\d{2})[/-](\d{1,2})[/-](\d{1,2})/,
+    /(\d{1,2})[/-](\d{1,2})\s+(?:\d{1,2}:\d{2})?/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = source.match(pattern);
+    if (!match) continue;
+    const hasYear = match.length === 4;
+    const year = hasYear ? normalizeReceiptYear(Number(match[1])) : now.getFullYear();
+    const month = Number(match[hasYear ? 2 : 1]);
+    const day = Number(match[hasYear ? 3 : 2]);
+    const date = new Date(year, month - 1, day);
+    if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
+      return formatDateLocal(date);
+    }
+  }
+
+  return "";
+}
+
+function normalizeReceiptYear(year) {
+  if (year < 100) return 2000 + year;
+  return year;
+}
+
 function extractNumbers(line) {
   const normalized = String(line || "")
     .replace(/[，,]/g, "")
@@ -798,7 +870,39 @@ function cleanupMemo(text) {
     .trim();
 }
 
+function guessStoreName(text, fallback = "") {
+  const lines = String(text || "")
+    .split(/\n+/)
+    .map((line) => cleanupStoreLine(line))
+    .filter(Boolean);
+
+  const known = lines.find((line) =>
+    storeCategoryRules.some((rule) => rule.keywords.some((keyword) => normalizeText(line).includes(normalizeText(keyword)))),
+  );
+  if (known) return known;
+
+  const candidate = lines.find((line) => {
+    if (line.length < 2 || line.length > 24) return false;
+    if (/補正画像|白黒補正|下部候補|文字|合計|小計|税込|税|対象|領収|レシート|電話|tel|登録|担当|現計|釣|預|ポイント|円|¥|total|tax/i.test(line)) return false;
+    if (/^\d+$/.test(line)) return false;
+    if (/\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}[/-]\d{1,2}|\d{1,2}:\d{2}/.test(line)) return false;
+    return /[ぁ-んァ-ン一-龥a-zA-Z]/.test(line);
+  });
+  if (candidate) return candidate;
+
+  return cleanupStoreLine(fallback);
+}
+
+function cleanupStoreLine(line) {
+  return String(line || "")
+    .replace(/[|｜]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s:：・*.\-]+|[\s:：・*.\-]+$/g, "")
+    .trim();
+}
+
 function applyReceiptDraft(draft) {
+  if (draft.date) dateInput.value = draft.date;
   memoInput.value = draft.memo;
   categoryInput.value = draft.category;
   if (draft.amount) amountInput.value = draft.amount;
@@ -806,7 +910,8 @@ function applyReceiptDraft(draft) {
 
   if (draft.usedOcr && draft.amount) {
     const engineLabel = draft.ocrEngine === "tesseract" ? "無料OCR" : "端末内OCR";
-    setScanStatus("ready", `${engineLabel}で金額候補を出しました`, "下の候補から正しい金額を選び、内容を確認してから登録してください。");
+    const dateText = draft.date ? "日付も入力しました。" : "日付は読み取れなければ今日のままです。";
+    setScanStatus("ready", `${engineLabel}で候補を出しました`, `${dateText} 店舗名からカテゴリも推測しています。内容を確認して登録してください。`);
     return;
   }
 
