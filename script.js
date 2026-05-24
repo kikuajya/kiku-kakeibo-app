@@ -137,6 +137,9 @@ const cancelEditButton = document.querySelector("#cancelEditButton");
 const receiptInput = document.querySelector("#receiptImage");
 const receiptPreview = document.querySelector("#receiptPreview");
 const scanStatus = document.querySelector("#scanStatus");
+const ocrReview = document.querySelector("#ocrReview");
+const ocrAmountList = document.querySelector("#ocrAmountList");
+const ocrRawText = document.querySelector("#ocrRawText");
 const seedButton = document.querySelector("#seedButton");
 const openReceiptButton = document.querySelector("#openReceiptButton");
 const modeLabel = document.querySelector("#modeLabel");
@@ -226,6 +229,16 @@ stampPicker?.addEventListener("click", (event) => {
 closeStampPicker?.addEventListener("click", closeStampSheet);
 clearStampButton?.addEventListener("click", clearNoSpendStamp);
 
+ocrAmountList?.addEventListener("click", (event) => {
+  const amountButton = event.target.closest("[data-ocr-amount]");
+  if (!amountButton) return;
+
+  amountInput.value = amountButton.dataset.ocrAmount;
+  document.querySelectorAll("[data-ocr-amount]").forEach((button) => {
+    button.classList.toggle("selected", button === amountButton);
+  });
+});
+
 calendarGrid?.addEventListener("click", (event) => {
   const stampButton = event.target.closest("[data-stamp-date]");
   if (stampButton) {
@@ -299,6 +312,7 @@ receiptInput.addEventListener("change", async () => {
 
   receiptPreview.src = URL.createObjectURL(file);
   receiptPreview.style.display = "block";
+  hideOcrReview();
   setScanStatus("warning", "写真を読み取り中", "初回は無料OCRの準備に少し時間がかかります。画面を閉じずにお待ちください。");
   applyReceiptDraft(await readReceiptDraft(file));
 });
@@ -330,6 +344,7 @@ form.addEventListener("submit", (event) => {
   clearEditState(false);
   receiptPreview.removeAttribute("src");
   receiptPreview.style.display = "none";
+  hideOcrReview();
   render();
 });
 
@@ -539,16 +554,19 @@ async function readReceiptDraft(file) {
   const ocrResult = await readTextOnDevice(file);
   const localText = ocrResult.text;
   const sourceText = [localText, fileHint].filter(Boolean).join("\n");
-  const amount = extractAmount(sourceText);
+  const amountCandidates = extractAmountCandidates(sourceText);
+  const amount = amountCandidates[0]?.amount || null;
   const category = guessCategory(sourceText);
 
   return {
     amount,
+    amountCandidates,
     category,
     memo: guessMemo(sourceText, fileHint) || "レシート内容",
     confidence: amount && localText ? "ready" : "warning",
     usedOcr: Boolean(localText),
     ocrEngine: ocrResult.engine,
+    rawText: localText,
   };
 }
 
@@ -669,7 +687,7 @@ async function prepareReceiptImage(file) {
   return canvas.toDataURL("image/jpeg", 0.92);
 }
 
-function extractAmount(text) {
+function extractAmountCandidates(text) {
   const lines = String(text || "")
     .split(/\n+/)
     .map((line) => line.trim())
@@ -682,13 +700,22 @@ function extractAmount(text) {
       candidates.push({
         amount,
         score: amountLineScore(line, index, lines.length),
+        line,
       });
     });
   });
 
-  if (!candidates.length) return null;
   candidates.sort((a, b) => b.score - a.score || b.amount - a.amount);
-  return candidates[0].amount;
+  const seen = new Set();
+  return candidates.filter((candidate) => {
+    if (seen.has(candidate.amount)) return false;
+    seen.add(candidate.amount);
+    return true;
+  }).slice(0, 8);
+}
+
+function extractAmount(text) {
+  return extractAmountCandidates(text)[0]?.amount || null;
 }
 
 function extractNumbers(line) {
@@ -720,10 +747,11 @@ function applyReceiptDraft(draft) {
   memoInput.value = draft.memo;
   categoryInput.value = draft.category;
   if (draft.amount) amountInput.value = draft.amount;
+  renderOcrReview(draft);
 
   if (draft.usedOcr && draft.amount) {
     const engineLabel = draft.ocrEngine === "tesseract" ? "無料OCR" : "端末内OCR";
-    setScanStatus("ready", `${engineLabel}で候補を入力しました`, "写真は有料AIに送っていません。金額とカテゴリを確認して登録できます。");
+    setScanStatus("ready", `${engineLabel}で候補を出しました`, "下の候補から正しい金額を選び、内容を確認してから登録してください。");
     return;
   }
 
@@ -733,6 +761,36 @@ function applyReceiptDraft(draft) {
   }
 
   setScanStatus("warning", "写真を読み取れませんでした", "明るい場所でレシート全体をまっすぐ撮ると読み取りやすくなります。");
+}
+
+function renderOcrReview(draft) {
+  if (!ocrReview || !ocrAmountList || !ocrRawText) return;
+  const candidates = draft.amountCandidates || [];
+  const hasText = Boolean(draft.rawText);
+  ocrReview.hidden = !candidates.length && !hasText;
+  ocrRawText.textContent = draft.rawText || "読み取った文字はありません。";
+
+  if (!candidates.length) {
+    ocrAmountList.innerHTML = `<p class="expense-meta">金額候補が見つかりませんでした。金額欄に手入力してください。</p>`;
+    return;
+  }
+
+  ocrAmountList.innerHTML = candidates
+    .map(
+      (candidate, index) => `
+        <button class="${index === 0 ? "selected" : ""}" type="button" data-ocr-amount="${candidate.amount}">
+          <strong>${yen(candidate.amount)}</strong>
+          <span>${candidate.line}</span>
+        </button>
+      `,
+    )
+    .join("");
+}
+
+function hideOcrReview() {
+  if (ocrReview) ocrReview.hidden = true;
+  if (ocrAmountList) ocrAmountList.innerHTML = "";
+  if (ocrRawText) ocrRawText.textContent = "";
 }
 
 function guessMemo(text, fallback = "") {
@@ -1302,6 +1360,7 @@ function switchMode(mode) {
   clearEditState(false);
   receiptPreview.removeAttribute("src");
   receiptPreview.style.display = "none";
+  hideOcrReview();
   render();
   subscribeCloudData();
   if (window.location.hash !== activeHash) {

@@ -250,6 +250,19 @@
               <strong>撮影待ち</strong>
               <span>写真は外部サービスへ送信しません。読み取れない場合は手入力できます。</span>
             </div>
+            <div class="ocr-review" id="ocrReview" hidden>
+              <div class="ocr-review-header">
+                <div>
+                  <span>読み取り候補</span>
+                  <strong>金額を確認して選択</strong>
+                </div>
+              </div>
+              <div class="ocr-amount-list" id="ocrAmountList"></div>
+              <details class="ocr-text-panel">
+                <summary>読み取った文字を見る</summary>
+                <pre id="ocrRawText"></pre>
+              </details>
+            </div>
 
             <form id="expenseForm" class="expense-form">
               <label>

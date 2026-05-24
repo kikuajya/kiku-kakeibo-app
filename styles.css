@@ -1013,6 +1013,105 @@ body.view-analysis .wide-grid {
   color: var(--green);
 }
 
+.ocr-review[hidden] {
+  display: none;
+}
+
+.ocr-review {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffefa;
+  display: grid;
+  gap: 12px;
+}
+
+.ocr-review-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ocr-review-header div {
+  display: grid;
+  gap: 3px;
+}
+
+.ocr-review-header span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ocr-review-header strong {
+  color: var(--ink);
+}
+
+.ocr-amount-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ocr-amount-list button {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.ocr-amount-list button.selected {
+  border-color: var(--green);
+  background: #edf5ef;
+}
+
+.ocr-amount-list strong {
+  color: var(--green);
+  white-space: nowrap;
+}
+
+.ocr-amount-list span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ocr-text-panel {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.ocr-text-panel summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ocr-text-panel pre {
+  max-height: 160px;
+  overflow: auto;
+  margin: 10px 0 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f4f1e9;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 .expense-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
