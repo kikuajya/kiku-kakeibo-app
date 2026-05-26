@@ -40,6 +40,7 @@ exports.analyzeReceipt = onCall(
   {
     timeoutSeconds: 60,
     memory: "256MiB",
+    invoker: "public",
   },
   async (request) => {
     if (!request.auth) {
