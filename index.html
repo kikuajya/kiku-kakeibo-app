@@ -243,12 +243,12 @@
             <label class="upload-box" for="receiptImage">
               <input id="receiptImage" type="file" accept="image/*" capture="environment" />
               <span>カメラで撮影して入力</span>
-              <small>無料の端末内読み取りだけを使用</small>
+              <small>Cloud Visionで読み取り、確認してから登録</small>
             </label>
             <img class="receipt-preview" id="receiptPreview" alt="選択したレシート写真のプレビュー" />
             <div class="scan-status" id="scanStatus" aria-live="polite">
               <strong>撮影待ち</strong>
-              <span>写真は外部サービスへ送信しません。読み取れない場合は手入力できます。</span>
+              <span>写真は登録せず、文字読み取りだけに使います。読み取れない場合は手入力できます。</span>
             </div>
             <div class="ocr-review" id="ocrReview" hidden>
               <div class="ocr-review-header">

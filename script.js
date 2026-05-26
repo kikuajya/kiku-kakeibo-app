@@ -12,6 +12,10 @@ import {
   serverTimestamp,
   setDoc,
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import {
+  getFunctions,
+  httpsCallable,
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCUEOBwgYVZVLKqjSbaZSo57r9F9rTWjOQ",
@@ -26,6 +30,8 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
+const cloudFunctions = getFunctions(firebaseApp, "asia-northeast1");
+const analyzeReceipt = httpsCallable(cloudFunctions, "analyzeReceipt");
 const tesseractScriptUrl = "https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/tesseract.min.js";
 const receiptAmountOcrLanguage = "eng";
 const receiptTextOcrLanguages = ["jpn", "eng"];
@@ -322,7 +328,7 @@ receiptInput.addEventListener("change", async () => {
   receiptPreview.src = URL.createObjectURL(file);
   receiptPreview.style.display = "block";
   hideOcrReview();
-  setScanStatus("warning", "写真を読み取り中", "初回は無料OCRの準備に少し時間がかかります。画面を閉じずにお待ちください。");
+  setScanStatus("warning", "写真を読み取り中", "Cloud Visionで日付・店舗・金額候補を確認しています。");
   applyReceiptDraft(await readReceiptDraft(file));
 });
 
@@ -564,14 +570,49 @@ function normalizeText(text) {
 
 async function readReceiptDraft(file) {
   const fileHint = file.name.replace(/\.[^.]+$/, "");
+  try {
+    const cloudResult = await readTextWithCloudVision(file);
+    return buildReceiptDraftFromText(cloudResult.text, fileHint, {
+      amountCandidates: cloudResult.amountCandidates,
+      date: cloudResult.date,
+      category: cloudResult.category,
+      memo: cloudResult.storeName,
+      ocrEngine: "cloud-vision",
+      usage: cloudResult.usage,
+    });
+  } catch (error) {
+    console.error(error);
+    if (error?.code === "functions/resource-exhausted" || error?.message?.includes("OCR_MONTHLY_LIMIT")) {
+      return {
+        amount: null,
+        amountCandidates: [],
+        date: "",
+        category: "食費",
+        memo: guessMemo(fileHint) || "レシート内容",
+        confidence: "warning",
+        usedOcr: false,
+        ocrEngine: "",
+        rawText: "",
+        errorTitle: "今月のOCR上限に達しました",
+        errorBody: "安全のため月900回で自動停止しています。今月は手入力で登録してください。",
+      };
+    }
+  }
+
   const ocrResult = await readTextOnDevice(file);
-  const localText = ocrResult.text;
-  const sourceText = [localText, fileHint].filter(Boolean).join("\n");
-  const amountCandidates = extractAmountCandidates(sourceText);
+  return buildReceiptDraftFromText(ocrResult.text, fileHint, {
+    ocrEngine: ocrResult.engine,
+    fallback: true,
+  });
+}
+
+function buildReceiptDraftFromText(text, fileHint, options = {}) {
+  const sourceText = [text, fileHint].filter(Boolean).join("\n");
+  const amountCandidates = options.amountCandidates?.length ? options.amountCandidates : extractAmountCandidates(sourceText);
   const amount = amountCandidates[0]?.amount || null;
-  const receiptDate = extractReceiptDate(sourceText);
-  const storeName = guessStoreName(sourceText, fileHint);
-  const category = guessCategory([storeName, sourceText].filter(Boolean).join("\n"));
+  const receiptDate = options.date || extractReceiptDate(sourceText);
+  const storeName = options.memo || guessStoreName(sourceText, fileHint);
+  const category = options.category || guessCategory([storeName, sourceText].filter(Boolean).join("\n"));
 
   return {
     amount,
@@ -579,11 +620,36 @@ async function readReceiptDraft(file) {
     date: receiptDate,
     category,
     memo: storeName || guessMemo(sourceText, fileHint) || "レシート内容",
-    confidence: amount && localText ? "ready" : "warning",
-    usedOcr: Boolean(localText),
-    ocrEngine: ocrResult.engine,
-    rawText: localText,
+    confidence: amount && text ? "ready" : "warning",
+    usedOcr: Boolean(text),
+    ocrEngine: options.ocrEngine || "",
+    rawText: text,
+    usage: options.usage || null,
+    fallback: Boolean(options.fallback),
   };
+}
+
+async function readTextWithCloudVision(file) {
+  if (!auth.currentUser) throw new Error("ログイン後にOCRを使えます。");
+
+  const imageBase64 = await resizeReceiptForCloudVision(file);
+  const response = await analyzeReceipt({ imageBase64 });
+  return response.data || {};
+}
+
+async function resizeReceiptForCloudVision(file) {
+  const bitmap = await createImageBitmap(file);
+  const maxWidth = 1400;
+  const scale = Math.min(1, maxWidth / bitmap.width);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+  return canvas.toDataURL("image/jpeg", 0.82).replace(/^data:image\/jpeg;base64,/, "");
 }
 
 async function readTextOnDevice(file) {
@@ -908,19 +974,26 @@ function applyReceiptDraft(draft) {
   if (draft.amount) amountInput.value = draft.amount;
   renderOcrReview(draft);
 
+  if (draft.errorTitle) {
+    setScanStatus("warning", draft.errorTitle, draft.errorBody);
+    return;
+  }
+
   if (draft.usedOcr && draft.amount) {
-    const engineLabel = draft.ocrEngine === "tesseract" ? "無料OCR" : "端末内OCR";
+    const engineLabel = draft.ocrEngine === "cloud-vision" ? "Cloud Vision" : draft.ocrEngine === "tesseract" ? "無料OCR" : "端末内OCR";
     const dateText = draft.date ? "日付も入力しました。" : "日付は読み取れなければ今日のままです。";
-    setScanStatus("ready", `${engineLabel}で候補を出しました`, `${dateText} 店舗名からカテゴリも推測しています。内容を確認して登録してください。`);
+    const usageText = draft.usage ? ` 今月${draft.usage.count}/${draft.usage.limit}回。` : "";
+    setScanStatus("ready", `${engineLabel}で候補を出しました`, `${dateText} 店舗名からカテゴリも推測しています。内容を確認して登録してください。${usageText}`);
     return;
   }
 
   if (draft.usedOcr) {
-    setScanStatus("warning", "文字は読めましたが金額候補が弱いです", "読み取った文字を開いて確認できます。金額は手入力してください。");
+    const engineLabel = draft.ocrEngine === "cloud-vision" ? "Cloud Vision" : "OCR";
+    setScanStatus("warning", `${engineLabel}で文字は読めました`, "金額候補が弱いです。読み取った文字を開いて確認し、金額は手入力してください。");
     return;
   }
 
-  setScanStatus("warning", "写真を読み取れませんでした", "無料OCRではこの写真の文字を拾えませんでした。明るい場所で、レシートを画面いっぱいにまっすぐ撮ると改善します。");
+  setScanStatus("warning", "写真を読み取れませんでした", "Cloud Visionが未デプロイ、または通信に失敗した可能性があります。金額は手入力できます。");
 }
 
 function renderOcrReview(draft) {
