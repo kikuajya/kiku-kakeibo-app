@@ -389,6 +389,7 @@ body.view-dashboard #receipt,
 body.view-dashboard .wide-grid,
 body.view-receipt #dashboard,
 body.view-receipt .metrics,
+body.view-receipt .advance-summary,
 body.view-receipt #calendar,
 body.view-receipt #budget,
 body.view-receipt #trend,
@@ -397,18 +398,21 @@ body.view-receipt #advice,
 body.view-receipt .wide-grid,
 body.view-budget #dashboard,
 body.view-budget .metrics,
+body.view-budget .advance-summary,
 body.view-budget #calendar,
 body.view-budget #trend,
 body.view-budget .content-grid,
 body.view-budget .wide-grid,
 body.view-trend #dashboard,
 body.view-trend .metrics,
+body.view-trend .advance-summary,
 body.view-trend #calendar,
 body.view-trend #budget,
 body.view-trend .content-grid,
 body.view-trend .wide-grid,
 body.view-analysis #dashboard,
 body.view-analysis .metrics,
+body.view-analysis .advance-summary,
 body.view-analysis #calendar,
 body.view-analysis #budget,
 body.view-analysis #trend,
@@ -579,6 +583,68 @@ body.view-analysis .wide-grid {
 
 .metrics .metric-primary strong {
   font-size: 38px;
+}
+
+.advance-summary {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 18px;
+}
+
+.advance-summary[hidden] {
+  display: none;
+}
+
+.advance-summary-head,
+.advance-summary-grid {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+}
+
+.advance-summary-head {
+  grid-template-columns: 1fr auto;
+}
+
+.advance-summary-head h3 {
+  margin: 2px 0 0;
+}
+
+.advance-summary-head strong {
+  color: var(--ink);
+  font-size: 24px;
+}
+
+.advance-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.advance-summary-grid article {
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-height: 76px;
+  padding: 12px;
+}
+
+.advance-summary-grid span,
+.advance-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.advance-summary-grid strong {
+  color: var(--ink);
+  font-size: 21px;
+  line-height: 1.25;
+}
+
+.advance-note {
+  margin: 0;
 }
 
 .calendar-panel {
@@ -1375,6 +1441,7 @@ body.view-analysis .wide-grid {
   }
 
   .metrics,
+  .advance-summary-grid,
   .content-grid,
   .wide-grid {
     grid-template-columns: 1fr 1fr;
@@ -1565,6 +1632,23 @@ body.view-analysis .wide-grid {
 
   .metrics .metric-primary strong {
     font-size: 26px;
+  }
+
+  .advance-summary {
+    padding: 14px;
+  }
+
+  .advance-summary-head,
+  .advance-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .advance-summary-head strong {
+    font-size: 22px;
+  }
+
+  .advance-summary-grid strong {
+    font-size: 20px;
   }
 
   .panel {

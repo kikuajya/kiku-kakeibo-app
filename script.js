@@ -32,6 +32,7 @@ const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 const cloudFunctions = getFunctions(firebaseApp, "asia-northeast1");
 const analyzeReceipt = httpsCallable(cloudFunctions, "analyzeReceipt");
+const isFilePage = window.location.protocol === "file:";
 const tesseractScriptUrl = "https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/tesseract.min.js";
 const receiptAmountOcrLanguage = "eng";
 const receiptTextOcrLanguages = ["jpn", "eng"];
@@ -191,6 +192,10 @@ dateInput.valueAsDate = new Date();
 
 loginForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (isFilePage) {
+    setAuthMessage("この開き方ではログインできません。http://127.0.0.1:4180/ またはGitHub Pages版で開いてください。");
+    return;
+  }
   setAuthMessage("ログイン中です...");
 
   try {
@@ -1163,6 +1168,36 @@ function renderMetrics() {
   document.querySelector("#budgetStatus").textContent = remaining >= 0 ? "予算内" : "予算超過";
 }
 
+function renderAdvanceSummary() {
+  const summary = document.querySelector("#advanceSummary");
+  if (!summary) return;
+
+  summary.hidden = currentMode !== "couple";
+  if (currentMode !== "couple") return;
+
+  const totals = advanceTotals();
+  document.querySelector("#husbandAdvance").textContent = yen(totals.husband);
+  document.querySelector("#wifeAdvance").textContent = yen(totals.wife);
+  document.querySelector("#advanceTotal").textContent = yen(totals.total);
+
+  if (!totals.total) {
+    document.querySelector("#advanceSettlement").textContent = "なし";
+    document.querySelector("#advanceNote").textContent = "この月は旦那・妻の立替登録がありません。";
+    return;
+  }
+
+  if (!totals.difference) {
+    document.querySelector("#advanceSettlement").textContent = "差額なし";
+    document.querySelector("#advanceNote").textContent = "旦那と妻の立替額は同額です。";
+    return;
+  }
+
+  const receiver = totals.husband > totals.wife ? "旦那" : "妻";
+  const payer = totals.husband > totals.wife ? "妻" : "旦那";
+  document.querySelector("#advanceSettlement").textContent = `${payer} → ${receiver} ${yen(totals.settlement)}`;
+  document.querySelector("#advanceNote").textContent = `差額は${yen(totals.difference)}です。夫婦で半分ずつ負担するなら、${payer}が${receiver}へ${yen(totals.settlement)}渡す目安です。`;
+}
+
 function renderCategories() {
   const list = document.querySelector("#categoryList");
   const totals = sortCategoryTotals(categoryTotals());
@@ -1569,6 +1604,7 @@ function renderAdvice() {
 function render() {
   renderMode();
   renderMetrics();
+  renderAdvanceSummary();
   renderTrendChart();
   renderCategories();
   renderCalendar();
@@ -1677,6 +1713,26 @@ function advancePayerFor(expense) {
   if (expense.payer === "夫") return "旦那";
   if (expense.payer === "妻") return "妻";
   return "";
+}
+
+function advanceTotals() {
+  const totals = monthlyExpenses().reduce(
+    (result, expense) => {
+      const advancePayer = advancePayerFor(expense);
+      if (advancePayer === "旦那") result.husband += expense.amount;
+      if (advancePayer === "妻") result.wife += expense.amount;
+      return result;
+    },
+    { husband: 0, wife: 0 },
+  );
+  const difference = Math.abs(totals.husband - totals.wife);
+
+  return {
+    ...totals,
+    total: totals.husband + totals.wife,
+    difference,
+    settlement: Math.round(difference / 2),
+  };
 }
 
 function paymentLabel(expense) {
@@ -1887,7 +1943,11 @@ onAuthStateChanged(auth, (user) => {
     if (cloudUnsubscribe) cloudUnsubscribe();
     cloudUnsubscribe = null;
     setSyncStatus("ログインが必要です");
-    setAuthMessage("Firebaseに登録済みの家族アカウントでログインしてください。");
+    setAuthMessage(
+      isFilePage
+        ? "この開き方ではログインできません。http://127.0.0.1:4180/ またはGitHub Pages版で開いてください。"
+        : "Firebaseに登録済みの家族アカウントでログインしてください。",
+    );
     return;
   }
 

@@ -11,6 +11,9 @@ const db = admin.firestore();
 const visionClient = new vision.ImageAnnotatorClient();
 const OCR_MONTHLY_LIMIT = 900;
 const MAX_IMAGE_BASE64_LENGTH = 5_000_000;
+const ALLOWED_UIDS = new Set([
+  "scG6gjxpbzeN9uUPORQmuaei4rd2",
+]);
 
 const categoryKeywords = {
   外食費: ["外食", "レストラン", "居酒屋", "カフェ", "喫茶", "ランチ", "ディナー", "マクドナルド", "マック", "ガスト", "サイゼ", "すき家", "吉野家", "丸亀", "ラーメン", "restaurant", "cafe", "lunch", "dinner"],
@@ -41,6 +44,9 @@ exports.analyzeReceipt = onCall(
   async (request) => {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "ログイン後にOCRを使えます。");
+    }
+    if (!ALLOWED_UIDS.has(request.auth.uid)) {
+      throw new HttpsError("permission-denied", "このアカウントではOCRを使えません。");
     }
 
     const imageBase64 = request.data?.imageBase64;
