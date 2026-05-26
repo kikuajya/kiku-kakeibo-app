@@ -587,28 +587,43 @@ async function readReceiptDraft(file) {
     });
   } catch (error) {
     console.error(error);
-    if (error?.code === "functions/resource-exhausted" || error?.message?.includes("OCR_MONTHLY_LIMIT")) {
-      return {
-        amount: null,
-        amountCandidates: [],
-        date: "",
-        category: "食費",
-        memo: guessMemo(fileHint) || "レシート内容",
-        confidence: "warning",
-        usedOcr: false,
-        ocrEngine: "",
-        rawText: "",
-        errorTitle: "今月のOCR上限に達しました",
-        errorBody: "安全のため月900回で自動停止しています。今月は手入力で登録してください。",
-      };
-    }
+    return buildReceiptErrorDraft(error, fileHint);
+  }
+}
+
+function buildReceiptErrorDraft(error, fileHint) {
+  const code = error?.code || "";
+  const message = error?.message || "";
+  let errorTitle = "Cloud Visionに接続できませんでした";
+  let errorBody = "無料OCRには切り替えません。ログイン状態、Functionsのデプロイ、GitHub Pagesへの反映を確認してください。";
+
+  if (code === "functions/resource-exhausted" || message.includes("OCR_MONTHLY_LIMIT")) {
+    errorTitle = "今月のOCR上限に達しました";
+    errorBody = "安全のため月900回で自動停止しています。今月は手入力で登録してください。";
+  } else if (code === "functions/permission-denied") {
+    errorTitle = "このアカウントではOCRを使えません";
+    errorBody = "Firebaseに登録済みで、Functions側に許可された家族アカウントでログインしてください。";
+  } else if (code === "functions/unauthenticated") {
+    errorTitle = "ログインが必要です";
+    errorBody = "ログイン後にもう一度レシートを撮影してください。";
+  } else if (code === "functions/not-found") {
+    errorTitle = "Cloud Vision OCRが未反映です";
+    errorBody = "Functionsのデプロイ、またはGitHub PagesへのPushがまだ反映されていない可能性があります。";
   }
 
-  const ocrResult = await readTextOnDevice(file);
-  return buildReceiptDraftFromText(ocrResult.text, fileHint, {
-    ocrEngine: ocrResult.engine,
-    fallback: true,
-  });
+  return {
+    amount: null,
+    amountCandidates: [],
+    date: "",
+    category: "食費",
+    memo: guessMemo(fileHint) || "レシート内容",
+    confidence: "warning",
+    usedOcr: false,
+    ocrEngine: "",
+    rawText: "",
+    errorTitle,
+    errorBody,
+  };
 }
 
 function buildReceiptDraftFromText(text, fileHint, options = {}) {
