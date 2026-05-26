@@ -12,10 +12,6 @@ import {
   serverTimestamp,
   setDoc,
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-import {
-  getFunctions,
-  httpsCallable,
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCUEOBwgYVZVLKqjSbaZSo57r9F9rTWjOQ",
@@ -30,8 +26,7 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
-const cloudFunctions = getFunctions(firebaseApp, "asia-northeast1");
-const analyzeReceipt = httpsCallable(cloudFunctions, "analyzeReceipt");
+const cloudVisionEndpoint = "https://asia-northeast1-kiku-kakeibo.cloudfunctions.net/analyzeReceiptHttp";
 const isFilePage = window.location.protocol === "file:";
 const tesseractScriptUrl = "https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/tesseract.min.js";
 const receiptAmountOcrLanguage = "eng";
@@ -597,18 +592,23 @@ function buildReceiptErrorDraft(error, fileHint) {
   let errorTitle = "Cloud Visionに接続できませんでした";
   let errorBody = "無料OCRには切り替えません。ログイン状態、Functionsのデプロイ、GitHub Pagesへの反映を確認してください。";
 
-  if (code === "functions/resource-exhausted" || message.includes("OCR_MONTHLY_LIMIT")) {
+  if (code === "functions/resource-exhausted" || code === "resource-exhausted" || message.includes("OCR_MONTHLY_LIMIT")) {
     errorTitle = "今月のOCR上限に達しました";
     errorBody = "安全のため月900回で自動停止しています。今月は手入力で登録してください。";
-  } else if (code === "functions/permission-denied") {
+  } else if (code === "functions/permission-denied" || code === "permission-denied") {
     errorTitle = "このアカウントではOCRを使えません";
     errorBody = "Firebaseに登録済みで、Functions側に許可された家族アカウントでログインしてください。";
-  } else if (code === "functions/unauthenticated") {
+  } else if (code === "functions/unauthenticated" || code === "unauthenticated") {
     errorTitle = "ログインが必要です";
     errorBody = "ログイン後にもう一度レシートを撮影してください。";
-  } else if (code === "functions/not-found") {
+  } else if (code === "functions/not-found" || code === "not-found") {
     errorTitle = "Cloud Vision OCRが未反映です";
     errorBody = "Functionsのデプロイ、またはGitHub PagesへのPushがまだ反映されていない可能性があります。";
+  } else if (code === "internal" || code === "http/500") {
+    errorTitle = "Cloud Vision処理でエラーが出ました";
+    errorBody = "Vision APIやFunctionsの権限を確認してください。";
+  } else if (code) {
+    errorBody = `エラーコード: ${code}。Functionsのログを確認してください。`;
   }
 
   return {
@@ -653,8 +653,22 @@ async function readTextWithCloudVision(file) {
   if (!auth.currentUser) throw new Error("ログイン後にOCRを使えます。");
 
   const imageBase64 = await resizeReceiptForCloudVision(file);
-  const response = await analyzeReceipt({ imageBase64 });
-  return response.data || {};
+  const idToken = await auth.currentUser.getIdToken();
+  const response = await fetch(cloudVisionEndpoint, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${idToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ imageBase64 }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload.message || "Cloud Vision OCRに失敗しました。");
+    error.code = payload.code || `http/${response.status}`;
+    throw error;
+  }
+  return payload;
 }
 
 async function resizeReceiptForCloudVision(file) {

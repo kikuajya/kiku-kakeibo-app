@@ -1,4 +1,4 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 const { FieldValue } = require("firebase-admin/firestore");
@@ -13,6 +13,13 @@ const OCR_MONTHLY_LIMIT = 900;
 const MAX_IMAGE_BASE64_LENGTH = 5_000_000;
 const ALLOWED_UIDS = new Set([
   "scG6gjxpbzeN9uUPORQmuaei4rd2",
+]);
+const ALLOWED_ORIGINS = new Set([
+  "http://127.0.0.1:4180",
+  "http://localhost:4180",
+  "https://kikuajya.github.io",
+  "https://kiku-kakeibo.web.app",
+  "https://kiku-kakeibo.firebaseapp.com",
 ]);
 
 const categoryKeywords = {
@@ -80,6 +87,130 @@ exports.analyzeReceipt = onCall(
     };
   },
 );
+
+exports.analyzeReceiptHttp = onRequest(
+  {
+    timeoutSeconds: 60,
+    memory: "256MiB",
+    invoker: "public",
+  },
+  async (request, response) => {
+    applyCors(request, response);
+    if (request.method === "OPTIONS") {
+      response.status(204).send("");
+      return;
+    }
+    if (request.method !== "POST") {
+      sendHttpError(response, 405, "method-not-allowed", "POSTで送信してください。");
+      return;
+    }
+
+    try {
+      const token = getBearerToken(request);
+      if (!token) {
+        throw new HttpFunctionError(401, "unauthenticated", "ログイン後にOCRを使えます。");
+      }
+      const decodedToken = await admin.auth().verifyIdToken(token);
+      if (!ALLOWED_UIDS.has(decodedToken.uid)) {
+        throw new HttpFunctionError(403, "permission-denied", "このアカウントではOCRを使えません。");
+      }
+
+      const result = await analyzeReceiptImage(request.body?.imageBase64);
+      response.status(200).json(result);
+    } catch (error) {
+      const knownError = normalizeHttpError(error);
+      console.error("analyzeReceiptHttp failed", {
+        code: knownError.code,
+        message: knownError.message,
+      });
+      sendHttpError(response, knownError.status, knownError.code, knownError.message);
+    }
+  },
+);
+
+async function analyzeReceiptImage(imageBase64) {
+  validateImageBase64(imageBase64);
+
+  const usage = await reserveOcrUsage();
+  const [result] = await visionClient.documentTextDetection({
+    image: { content: imageBase64 },
+  });
+  const text = result.fullTextAnnotation?.text || result.textAnnotations?.[0]?.description || "";
+  const amountCandidates = extractAmountCandidates(text);
+  const storeName = guessStoreName(text);
+  const category = guessCategory([storeName, text].filter(Boolean).join("\n"));
+
+  return {
+    text,
+    amountCandidates,
+    date: extractReceiptDate(text),
+    storeName: storeName || guessMemo(text) || "レシート内容",
+    category,
+    usage,
+  };
+}
+
+function validateImageBase64(imageBase64) {
+  if (typeof imageBase64 !== "string" || !imageBase64) {
+    throw new HttpsError("invalid-argument", "画像データがありません。");
+  }
+  if (imageBase64.length > MAX_IMAGE_BASE64_LENGTH) {
+    throw new HttpsError("invalid-argument", "画像が大きすぎます。撮影し直してください。");
+  }
+  if (!/^[A-Za-z0-9+/=]+$/.test(imageBase64)) {
+    throw new HttpsError("invalid-argument", "画像データの形式が正しくありません。");
+  }
+}
+
+function applyCors(request, response) {
+  const origin = request.get("origin");
+  if (ALLOWED_ORIGINS.has(origin)) {
+    response.set("Access-Control-Allow-Origin", origin);
+    response.set("Vary", "Origin");
+  }
+  response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  response.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
+  response.set("Access-Control-Max-Age", "3600");
+}
+
+function getBearerToken(request) {
+  const authorization = request.get("authorization") || "";
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  return match?.[1] || "";
+}
+
+class HttpFunctionError extends Error {
+  constructor(status, code, message) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+function normalizeHttpError(error) {
+  if (error instanceof HttpFunctionError) return error;
+  if (error instanceof HttpsError || error?.code) {
+    const code = normalizeHttpsCode(error.code);
+    return new HttpFunctionError(statusFromCode(code), code, error.message || "OCRに失敗しました。");
+  }
+  return new HttpFunctionError(500, "internal", "OCR処理中にエラーが発生しました。");
+}
+
+function normalizeHttpsCode(code) {
+  return String(code || "internal").replace(/^functions\//, "");
+}
+
+function statusFromCode(code) {
+  if (code === "unauthenticated") return 401;
+  if (code === "permission-denied") return 403;
+  if (code === "invalid-argument") return 400;
+  if (code === "resource-exhausted") return 429;
+  return 500;
+}
+
+function sendHttpError(response, status, code, message) {
+  response.status(status).json({ code, message });
+}
 
 async function reserveOcrUsage() {
   const monthKey = tokyoMonthKey();
