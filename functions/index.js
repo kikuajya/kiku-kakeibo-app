@@ -22,8 +22,62 @@ const ALLOWED_ORIGINS = new Set([
   "https://kiku-kakeibo.firebaseapp.com",
 ]);
 
+const diningStoreKeywords = [
+  "ガスト",
+  "ステーキガスト",
+  "ジョナサン",
+  "バーミヤン",
+  "夢庵",
+  "藍屋",
+  "しゃぶ葉",
+  "から好し",
+  "すかいらーく",
+  "マクドナルド",
+  "マック",
+  "モス",
+  "ケンタッキー",
+  "バーガーキング",
+  "ロッテリア",
+  "すき家",
+  "吉野家",
+  "松屋",
+  "なか卯",
+  "丸亀",
+  "はなまるうどん",
+  "サイゼ",
+  "サイゼリヤ",
+  "ココス",
+  "デニーズ",
+  "ロイヤルホスト",
+  "びっくりドンキー",
+  "大戸屋",
+  "やよい軒",
+  "餃子の王将",
+  "日高屋",
+  "幸楽苑",
+  "くら寿司",
+  "スシロー",
+  "はま寿司",
+  "かっぱ寿司",
+  "牛角",
+  "焼肉きんぐ",
+  "スターバックス",
+  "スタバ",
+  "ドトール",
+  "タリーズ",
+  "コメダ",
+  "エクセルシオール",
+  "プロント",
+  "ミスタードーナツ",
+  "ミスド",
+  "restaurant",
+  "cafe",
+  "gusto",
+  "skylark",
+];
+
 const categoryKeywords = {
-  外食費: ["外食", "レストラン", "居酒屋", "カフェ", "喫茶", "ランチ", "ディナー", "マクドナルド", "マック", "ガスト", "サイゼ", "すき家", "吉野家", "丸亀", "ラーメン", "restaurant", "cafe", "lunch", "dinner"],
+  外食費: ["外食", "レストラン", "居酒屋", "カフェ", "喫茶", "ランチ", "ディナー", "ラーメン", "寿司", "焼肉", "lunch", "dinner", ...diningStoreKeywords],
   食費: ["スーパー", "食材", "食品", "青果", "精肉", "鮮魚", "惣菜", "米", "パン", "牛乳", "イオン", "西友", "ライフ", "マルエツ", "オーケー", "成城石井", "costco", "super"],
   日用品: ["日用品", "洗剤", "ティッシュ", "トイレット", "シャンプー", "ドラッグ", "薬局", "マツキヨ", "ウエルシア", "サンドラッグ", "drug", "daily"],
   娯楽費: ["映画", "カラオケ", "ゲーム", "本", "漫画", "ライブ", "チケット", "netflix", "spotify", "movie", "game"],
@@ -36,7 +90,7 @@ const categoryKeywords = {
 };
 
 const storeCategoryRules = [
-  { category: "外食費", keywords: ["マクドナルド", "マック", "モス", "ケンタッキー", "すき家", "吉野家", "松屋", "丸亀", "サイゼ", "ガスト", "ジョナサン", "バーミヤン", "スターバックス", "スタバ", "ドトール", "タリーズ", "コメダ", "ラーメン", "寿司", "焼肉", "居酒屋", "レストラン", "カフェ"] },
+  { category: "外食費", keywords: diningStoreKeywords },
   { category: "食費", keywords: ["イオン", "西友", "ライフ", "マルエツ", "オーケー", "okストア", "okstore", "成城石井", "コープ", "生協", "業務スーパー", "まいばすけっと", "ヨーク", "イトーヨーカドー", "サミット", "ベルク", "ヤオコー", "ロピア", "スーパー", "青果", "精肉", "鮮魚", "惣菜"] },
   { category: "日用品", keywords: ["マツモトキヨシ", "マツキヨ", "ウエルシア", "サンドラッグ", "ココカラファイン", "スギ薬局", "ツルハ", "ドラッグ", "薬局", "ダイソー", "セリア", "キャンドゥ", "無印良品", "ニトリ"] },
   { category: "娯楽費", keywords: ["映画", "シネマ", "カラオケ", "ゲーム", "ブックオフ", "書店", "チケット"] },
@@ -279,7 +333,9 @@ function extractAmountCandidates(text) {
 
 function extractNumbers(line) {
   const normalized = String(line || "")
+    .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
     .replace(/[，,]/g, "")
+    .replace(/(\d)[.．]\s*(\d{3})\b/g, "$1$2")
     .replace(/[Oo]/g, "0")
     .replace(/[Il|]/g, "1")
     .replace(/[Ss]/g, "5");
@@ -290,8 +346,10 @@ function extractNumbers(line) {
 function amountLineScore(line, index, lineCount) {
   const source = normalizeText(line);
   let score = 0;
-  if (/合計|総合計|税込|お買上|お会計|現計|請求|金額|total|amount|yen|ttl/.test(source)) score += 100;
-  if (/小計|税|消費税|内税|tax/.test(source)) score += 20;
+  if (/総合計|合計|お買上合計|お会計|現計|請求額|total|ttl/.test(source)) score += 300;
+  if (/クレジット|カード|電子マネー|paypay|支払/.test(source)) score += 120;
+  if (/税込|金額|amount|yen/.test(source)) score += 60;
+  if (/小計|税|消費税|内税|対象|tax/.test(source)) score -= 70;
   if (/お預|預り|釣|お釣|釣銭|ポイント|会員|電話|tel|no\.|番号/.test(source)) score -= 80;
   if (/\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}:\d{2}/.test(line)) score -= 60;
   score += Math.round((index / Math.max(lineCount - 1, 1)) * 10);

@@ -71,8 +71,62 @@ const colorByCategory = {
   その他: "#6c6f75",
 };
 
+const diningStoreKeywords = [
+  "ガスト",
+  "ステーキガスト",
+  "ジョナサン",
+  "バーミヤン",
+  "夢庵",
+  "藍屋",
+  "しゃぶ葉",
+  "から好し",
+  "すかいらーく",
+  "マクドナルド",
+  "マック",
+  "モス",
+  "ケンタッキー",
+  "バーガーキング",
+  "ロッテリア",
+  "すき家",
+  "吉野家",
+  "松屋",
+  "なか卯",
+  "丸亀",
+  "はなまるうどん",
+  "サイゼ",
+  "サイゼリヤ",
+  "ココス",
+  "デニーズ",
+  "ロイヤルホスト",
+  "びっくりドンキー",
+  "大戸屋",
+  "やよい軒",
+  "餃子の王将",
+  "日高屋",
+  "幸楽苑",
+  "くら寿司",
+  "スシロー",
+  "はま寿司",
+  "かっぱ寿司",
+  "牛角",
+  "焼肉きんぐ",
+  "スターバックス",
+  "スタバ",
+  "ドトール",
+  "タリーズ",
+  "コメダ",
+  "エクセルシオール",
+  "プロント",
+  "ミスタードーナツ",
+  "ミスド",
+  "restaurant",
+  "cafe",
+  "gusto",
+  "skylark",
+];
+
 const categoryKeywords = {
-  外食費: ["外食", "レストラン", "居酒屋", "カフェ", "喫茶", "ランチ", "ディナー", "マクドナルド", "マック", "ガスト", "サイゼ", "すき家", "吉野家", "丸亀", "ラーメン", "restaurant", "cafe", "lunch", "dinner"],
+  外食費: ["外食", "レストラン", "居酒屋", "カフェ", "喫茶", "ランチ", "ディナー", "ラーメン", "寿司", "焼肉", "lunch", "dinner", ...diningStoreKeywords],
   食費: ["スーパー", "食材", "食品", "青果", "精肉", "鮮魚", "惣菜", "米", "パン", "牛乳", "イオン", "西友", "ライフ", "マルエツ", "オーケー", "成城石井", "costco", "super"],
   日用品: ["日用品", "洗剤", "ティッシュ", "トイレット", "シャンプー", "ドラッグ", "薬局", "マツキヨ", "ウエルシア", "サンドラッグ", "drug", "daily"],
   娯楽費: ["映画", "カラオケ", "ゲーム", "本", "漫画", "ライブ", "チケット", "netflix", "spotify", "movie", "game"],
@@ -85,7 +139,7 @@ const categoryKeywords = {
 };
 
 const storeCategoryRules = [
-  { category: "外食費", keywords: ["マクドナルド", "マック", "モス", "ケンタッキー", "すき家", "吉野家", "松屋", "丸亀", "サイゼ", "ガスト", "ジョナサン", "バーミヤン", "スターバックス", "スタバ", "ドトール", "タリーズ", "コメダ", "ラーメン", "寿司", "焼肉", "居酒屋", "レストラン", "カフェ"] },
+  { category: "外食費", keywords: diningStoreKeywords },
   { category: "食費", keywords: ["イオン", "西友", "ライフ", "マルエツ", "オーケー", "okストア", "okstore", "成城石井", "コープ", "生協", "業務スーパー", "まいばすけっと", "ヨーク", "イトーヨーカドー", "サミット", "ベルク", "ヤオコー", "ロピア", "スーパー", "青果", "精肉", "鮮魚", "惣菜"] },
   { category: "日用品", keywords: ["マツモトキヨシ", "マツキヨ", "ウエルシア", "サンドラッグ", "ココカラファイン", "スギ薬局", "ツルハ", "ドラッグ", "薬局", "ダイソー", "セリア", "キャンドゥ", "無印良品", "ニトリ"] },
   { category: "娯楽費", keywords: ["映画", "シネマ", "カラオケ", "ゲーム", "ブックオフ", "書店", "チケット"] },
@@ -143,6 +197,10 @@ const dateInput = document.querySelector("#expenseDate");
 const memoInput = document.querySelector("#expenseMemo");
 const amountInput = document.querySelector("#expenseAmount");
 const categoryInput = document.querySelector("#expenseCategory");
+const amountPreview = document.querySelector("#amountPreview");
+const addSplitButton = document.querySelector("#addSplitButton");
+const splitRows = document.querySelector("#splitRows");
+const calculatorPad = document.querySelector("#calculatorPad");
 const submitButton = document.querySelector(".submit-button");
 const cancelEditButton = document.querySelector("#cancelEditButton");
 const receiptInput = document.querySelector("#receiptImage");
@@ -152,6 +210,7 @@ const ocrReview = document.querySelector("#ocrReview");
 const ocrAmountList = document.querySelector("#ocrAmountList");
 const ocrRawText = document.querySelector("#ocrRawText");
 const seedButton = document.querySelector("#seedButton");
+const resetAllDataButton = document.querySelector("#resetAllDataButton");
 const openReceiptButton = document.querySelector("#openReceiptButton");
 const modeLabel = document.querySelector("#modeLabel");
 const viewTitle = document.querySelector("#viewTitle");
@@ -182,6 +241,8 @@ const signOutButton = document.querySelector("#signOutButton");
 const syncStatus = document.querySelector("#syncStatus");
 let editingExpenseId = "";
 let selectedMonthOffset = Number(localStorage.getItem("budget-app-month-offset") || 0);
+let activeCalcInput = amountInput;
+let selectedAdvanceDetail = "";
 
 dateInput.valueAsDate = new Date();
 
@@ -249,6 +310,7 @@ ocrAmountList?.addEventListener("click", (event) => {
   if (!amountButton) return;
 
   amountInput.value = amountButton.dataset.ocrAmount;
+  updateAmountPreview(amountInput, amountPreview);
   document.querySelectorAll("[data-ocr-amount]").forEach((button) => {
     button.classList.toggle("selected", button === amountButton);
   });
@@ -288,6 +350,13 @@ cancelEditButton?.addEventListener("click", () => {
   clearEditState();
 });
 
+document.querySelector("#advanceSummary")?.addEventListener("click", (event) => {
+  const detailButton = event.target.closest("[data-advance-detail]");
+  if (!detailButton) return;
+  selectedAdvanceDetail = selectedAdvanceDetail === detailButton.dataset.advanceDetail ? "" : detailButton.dataset.advanceDetail;
+  renderAdvanceSummary();
+});
+
 monthSelect.addEventListener("change", () => {
   selectedMonthOffset = Number(monthSelect.value);
   localStorage.setItem("budget-app-month-offset", String(selectedMonthOffset));
@@ -317,6 +386,12 @@ budgetInputs.forEach((input) => {
   });
 });
 
+resetAllDataButton?.addEventListener("click", async () => {
+  const ok = window.confirm("夫婦用・個人用の入力履歴、予算、スタンプをすべて消します。元に戻せません。実行しますか？");
+  if (!ok) return;
+  await resetAllData();
+});
+
 openReceiptButton.addEventListener("click", () => {
   navigateTo("#receipt");
 });
@@ -332,30 +407,93 @@ receiptInput.addEventListener("change", async () => {
   applyReceiptDraft(await readReceiptDraft(file));
 });
 
+amountInput.addEventListener("focus", () => {
+  activeCalcInput = amountInput;
+});
+
+amountInput.addEventListener("input", () => handleAmountInput(amountInput, amountPreview));
+
+addSplitButton?.addEventListener("click", () => {
+  addSplitRow();
+});
+
+splitRows?.addEventListener("click", (event) => {
+  const applyButton = event.target.closest("[data-apply-calc]");
+  if (applyButton) {
+    event.stopPropagation();
+    applyAmountExpression(applyButton.closest(".split-row"));
+    return;
+  }
+
+  const removeButton = event.target.closest("[data-remove-split]");
+  if (!removeButton) return;
+  removeButton.closest(".split-row")?.remove();
+});
+
+splitRows?.addEventListener("focusin", (event) => {
+  const input = event.target.closest(".split-amount");
+  if (input) activeCalcInput = input;
+});
+
+splitRows?.addEventListener("input", (event) => {
+  const input = event.target.closest(".split-amount");
+  if (!input) return;
+  handleAmountInput(input, input.closest(".split-row")?.querySelector(".split-preview"));
+});
+
+calculatorPad?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-calc-key]");
+  if (!button) return;
+  applyCalculatorKey(button.dataset.calcKey);
+});
+
+form.addEventListener("click", (event) => {
+  const applyButton = event.target.closest("[data-apply-calc]");
+  if (!applyButton) return;
+  applyAmountExpression(applyButton.closest(".split-row"));
+});
+
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   const submittedDate = dateInput.value;
+  const mainAmount = parseAmountExpression(amountInput.value);
+  const splitParts = getSplitParts();
 
-  const expense = {
-    id: editingExpenseId || createExpenseId(),
+  if (!mainAmount || splitParts.some((part) => !part.amount)) {
+    window.alert("金額を確認してください。式は 279+118 のように入力できます。");
+    return;
+  }
+
+  const baseExpense = {
     date: dateInput.value,
     memo: memoInput.value.trim(),
-    amount: Number(amountInput.value),
-    category: categoryInput.value,
     payer: currentMode === "couple" ? "共有" : "自分",
     advancePayer: currentMode === "couple" ? selectedAdvancePayer : "",
   };
+  const entries = [
+    { amount: mainAmount, category: categoryInput.value },
+    ...splitParts,
+  ];
+  const createdExpenses = entries.map((entry, index) => ({
+    ...baseExpense,
+    id: editingExpenseId && index === 0 ? editingExpenseId : createExpenseId(),
+    memo: entries.length > 1 ? `${baseExpense.memo}（${entry.category}）` : baseExpense.memo,
+    amount: entry.amount,
+    category: entry.category,
+  }));
 
   if (editingExpenseId) {
-    expenses = expenses.map((item) => (item.id === editingExpenseId ? expense : item));
+    expenses = expenses.map((item) => (item.id === editingExpenseId ? createdExpenses[0] : item));
   } else {
-    expenses = [expense, ...expenses];
+    expenses = [...createdExpenses, ...expenses];
   }
-  delete noSpendStamps[expense.date];
+  delete noSpendStamps[submittedDate];
   saveExpenses();
   saveNoSpendStamps();
   form.reset();
   dateInput.value = submittedDate;
+  clearSplitRows();
+  updateAmountPreview(amountInput, amountPreview);
   clearEditState(false);
   receiptPreview.removeAttribute("src");
   receiptPreview.style.display = "none";
@@ -427,6 +565,55 @@ function loadBudgets() {
 function saveBudgets() {
   localStorage.setItem(`${modeConfig[currentMode].storageKey}-budgets`, JSON.stringify(budgets));
   queueCloudSave();
+}
+
+function blankBudgets() {
+  return Object.fromEntries(Object.keys(defaultBudgets).map((key) => [key, 0]));
+}
+
+async function resetAllData() {
+  const clearedBudgets = blankBudgets();
+  const modes = Object.keys(modeConfig);
+
+  modes.forEach((mode) => {
+    const storageKey = modeConfig[mode].storageKey;
+    localStorage.setItem(storageKey, JSON.stringify([]));
+    localStorage.setItem(`${storageKey}-budgets`, JSON.stringify(clearedBudgets));
+    localStorage.setItem(`${storageKey}-no-spend-stamps`, JSON.stringify({}));
+  });
+
+  expenses = [];
+  budgets = { ...clearedBudgets };
+  noSpendStamps = {};
+  selectedAdvanceDetail = "";
+  selectedAdvancePayer = "";
+  clearEditState(true);
+  syncAdvanceButtons();
+  syncBudgetInputs();
+  render();
+  setSyncStatus("削除を保存中...");
+
+  if (!authUser) {
+    setSyncStatus("ローカル削除済み");
+    return;
+  }
+
+  try {
+    await Promise.all(modes.map((mode) => setDoc(
+      cloudDataRef(mode),
+      {
+        expenses: [],
+        budgets: clearedBudgets,
+        noSpendStamps: {},
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    )));
+    setSyncStatus("削除済み");
+  } catch (error) {
+    setSyncStatus("削除を同期できませんでした");
+    console.error(error);
+  }
 }
 
 function writeLocalCache() {
@@ -942,7 +1129,9 @@ function normalizeReceiptYear(year) {
 
 function extractNumbers(line) {
   const normalized = String(line || "")
+    .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
     .replace(/[，,]/g, "")
+    .replace(/(\d)[.．]\s*(\d{3})\b/g, "$1$2")
     .replace(/[Oo]/g, "0")
     .replace(/[Il|]/g, "1")
     .replace(/[Ss]/g, "5");
@@ -953,8 +1142,10 @@ function extractNumbers(line) {
 function amountLineScore(line, index, lineCount) {
   const source = normalizeText(line);
   let score = 0;
-  if (/合計|総合計|税込|お買上|お会計|現計|請求|金額|total|amount|yen|ttl/.test(source)) score += 100;
-  if (/小計|税|消費税|内税|tax/.test(source)) score += 20;
+  if (/総合計|合計|お買上合計|お会計|現計|請求額|total|ttl/.test(source)) score += 300;
+  if (/クレジット|カード|電子マネー|paypay|支払/.test(source)) score += 120;
+  if (/税込|金額|amount|yen/.test(source)) score += 60;
+  if (/小計|税|消費税|内税|対象|tax/.test(source)) score -= 70;
   if (/補正画像|白黒補正|下部候補/.test(line)) score += 6;
   if (/お預|預り|釣|お釣|釣銭|ポイント|会員|電話|tel|no\.|番号/.test(source)) score -= 80;
   if (/\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}:\d{2}/.test(line)) score -= 60;
@@ -1006,6 +1197,7 @@ function applyReceiptDraft(draft) {
   memoInput.value = draft.memo;
   categoryInput.value = draft.category;
   if (draft.amount) amountInput.value = draft.amount;
+  updateAmountPreview(amountInput, amountPreview);
   renderOcrReview(draft);
 
   if (draft.errorTitle) {
@@ -1058,6 +1250,115 @@ function hideOcrReview() {
   if (ocrReview) ocrReview.hidden = true;
   if (ocrAmountList) ocrAmountList.innerHTML = "";
   if (ocrRawText) ocrRawText.textContent = "";
+}
+
+function addSplitRow(data = {}) {
+  if (!splitRows) return;
+  const row = document.createElement("div");
+  row.className = "split-row";
+  row.innerHTML = `
+    <input class="split-amount calc-input" type="text" inputmode="text" pattern="[0-9+-]*" autocomplete="off" placeholder="118+290" value="${escapeAttribute(data.amount || "")}" />
+    <select class="split-category">
+      ${categoryOptionsHtml(data.category || "日用品")}
+    </select>
+    <button class="calc-apply-button" type="button" data-apply-calc aria-label="計算する">＝</button>
+    <button class="icon-button" type="button" data-remove-split aria-label="内訳を削除">×</button>
+    <small class="split-preview">半角数字と+-だけ使えます</small>
+  `;
+  splitRows.append(row);
+  const input = row.querySelector(".split-amount");
+  activeCalcInput = input;
+  input.focus();
+}
+
+function clearSplitRows() {
+  if (splitRows) splitRows.innerHTML = "";
+}
+
+function getSplitParts() {
+  if (!splitRows) return [];
+  return [...splitRows.querySelectorAll(".split-row")]
+    .map((row) => {
+      const rawAmount = row.querySelector(".split-amount")?.value || "";
+      const amount = parseAmountExpression(rawAmount);
+      const category = row.querySelector(".split-category")?.value || "その他";
+      return { amount, category, rawAmount };
+    })
+    .filter((part) => part.rawAmount.trim())
+    .map(({ amount, category }) => ({ amount, category }));
+}
+
+function categoryOptionsHtml(selectedCategory) {
+  return categories
+    .map((category) => `<option value="${category}"${category === selectedCategory ? " selected" : ""}>${category}</option>`)
+    .join("");
+}
+
+function parseAmountExpression(value) {
+  const source = sanitizeAmountExpression(value);
+  if (!source) return 0;
+  if (!/^\d+(?:[+\-]\d+)*$/.test(source)) return 0;
+  const total = source.match(/[+\-]?\d+/g).reduce((sum, item) => sum + Number(item), 0);
+  return Number.isFinite(total) && total > 0 ? total : 0;
+}
+
+function sanitizeAmountExpression(value) {
+  return String(value || "").replace(/[^0-9+-]/g, "");
+}
+
+function handleAmountInput(input, preview) {
+  const sanitized = sanitizeAmountExpression(input.value);
+  if (input.value !== sanitized) input.value = sanitized;
+  updateAmountPreview(input, preview);
+}
+
+function updateAmountPreview(input, preview) {
+  if (!input || !preview) return;
+  const amount = parseAmountExpression(input.value);
+  preview.textContent = amount ? `= ${yen(amount)}` : "半角数字と+-だけ使えます";
+}
+
+function applyAmountExpression(row) {
+  const input = row?.querySelector(".calc-input");
+  if (!input) return;
+  const amount = parseAmountExpression(input.value);
+  if (amount) input.value = String(amount);
+  updateAmountPreview(input, row.querySelector(".amount-preview, .split-preview"));
+  input.focus();
+}
+
+function applyCalculatorKey(key) {
+  const input = activeCalcInput || amountInput;
+  if (!input) return;
+  if (key === "clear") {
+    input.value = "";
+  } else if (key === "back") {
+    input.value = input.value.slice(0, -1);
+  } else if (key === "apply") {
+    const amount = parseAmountExpression(input.value);
+    if (amount) input.value = String(amount);
+  } else {
+    input.value = `${input.value || ""}${key}`;
+  }
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.focus();
+}
+
+function escapeAttribute(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatShortDate(dateKey) {
+  const [, month, day] = String(dateKey || "").match(/^\d{4}-(\d{2})-(\d{2})$/) || [];
+  return month && day ? `${Number(month)}/${Number(day)}` : dateKey;
 }
 
 function guessMemo(text, fallback = "") {
@@ -1185,11 +1486,13 @@ function renderMetrics() {
   const total = currentTotalSpend();
   const food = sumBy((expense) => expense.category === "食費" || expense.category === "外食費");
   const dining = sumBy((expense) => expense.category === "外食費");
+  const diningCount = monthlyExpenses().filter((expense) => expense.category === "外食費").length;
   const remaining = budgets.total - total;
 
   document.querySelector("#totalSpend").textContent = yen(total);
   document.querySelector("#foodSpend").textContent = yen(food);
   document.querySelector("#diningSpend").textContent = yen(dining);
+  document.querySelector("#diningCount").textContent = `${diningCount}回`;
   document.querySelector("#remainingBudget").textContent = yen(remaining);
   document.querySelector("#foodShare").textContent = `生活費の${percent(food, total)}%`;
   document.querySelector("#diningShare").textContent = `食費の${percent(dining, food)}%`;
@@ -1208,6 +1511,7 @@ function renderAdvanceSummary() {
   document.querySelector("#husbandAdvance").textContent = yen(totals.husband);
   document.querySelector("#wifeAdvance").textContent = yen(totals.wife);
   document.querySelector("#advanceTotal").textContent = yen(totals.total);
+  renderAdvanceDetail();
 
   if (!totals.total) {
     document.querySelector("#advanceSettlement").textContent = "なし";
@@ -1225,6 +1529,51 @@ function renderAdvanceSummary() {
   const payer = totals.husband > totals.wife ? "妻" : "旦那";
   document.querySelector("#advanceSettlement").textContent = `${payer} → ${receiver} ${yen(totals.settlement)}`;
   document.querySelector("#advanceNote").textContent = `差額は${yen(totals.difference)}です。夫婦で半分ずつ負担するなら、${payer}が${receiver}へ${yen(totals.settlement)}渡す目安です。`;
+}
+
+function renderAdvanceDetail() {
+  const detail = document.querySelector("#advanceDetail");
+  if (!detail) return;
+
+  document.querySelectorAll("[data-advance-detail]").forEach((button) => {
+    button.classList.toggle("selected", button.dataset.advanceDetail === selectedAdvanceDetail);
+  });
+
+  if (!selectedAdvanceDetail) {
+    detail.hidden = true;
+    detail.innerHTML = "";
+    return;
+  }
+
+  const items = monthlyExpenses().filter((expense) => advancePayerFor(expense) === selectedAdvanceDetail);
+  detail.hidden = false;
+  if (!items.length) {
+    detail.innerHTML = `
+      <div class="advance-detail-head">
+        <strong>${selectedAdvanceDetail}立替の内訳</strong>
+        <span>0件</span>
+      </div>
+      <p>${selectedAdvanceDetail}立替の登録はありません。</p>
+    `;
+    return;
+  }
+
+  const total = items.reduce((sum, expense) => sum + expense.amount, 0);
+  detail.innerHTML = `
+    <div class="advance-detail-head">
+      <strong>${selectedAdvanceDetail}立替の内訳</strong>
+      <span>${items.length}件・${yen(total)}</span>
+    </div>
+    <div class="advance-detail-list">
+      ${items.map((expense) => `
+        <div class="advance-detail-row">
+          <span>${formatShortDate(expense.date)} ${escapeHtml(expense.memo || "メモなし")}</span>
+          <small>${expense.category}</small>
+          <strong>${yen(expense.amount)}</strong>
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
 
 function renderCategories() {
@@ -1389,6 +1738,8 @@ function startEditExpense(id) {
   memoInput.value = expense.memo;
   amountInput.value = expense.amount;
   categoryInput.value = expense.category;
+  clearSplitRows();
+  updateAmountPreview(amountInput, amountPreview);
   selectedAdvancePayer = currentMode === "couple" ? advancePayerFor(expense) : "";
   syncAdvanceButtons();
   submitButton.textContent = "更新する";
@@ -1414,6 +1765,8 @@ function clearEditState(resetForm = true) {
   if (resetForm) {
     form.reset();
     dateInput.valueAsDate = new Date();
+    clearSplitRows();
+    updateAmountPreview(amountInput, amountPreview);
     selectedAdvancePayer = "";
     syncAdvanceButtons();
   }

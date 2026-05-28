@@ -105,9 +105,12 @@
             <strong id="foodSpend">¥0</strong>
             <small id="foodShare">生活費の0%</small>
           </article>
-          <article>
+          <article class="dining-metric">
             <span>外食費</span>
-            <strong id="diningSpend">¥0</strong>
+            <div class="dining-metric-values">
+              <strong id="diningSpend">¥0</strong>
+              <strong id="diningCount">0回</strong>
+            </div>
             <small id="diningShare">食費の0%</small>
           </article>
         </section>
@@ -121,19 +124,22 @@
             <strong id="advanceTotal">¥0</strong>
           </div>
           <div class="advance-summary-grid">
-            <article>
-              <span>旦那立替</span>
-              <strong id="husbandAdvance">¥0</strong>
-            </article>
-            <article>
-              <span>妻立替</span>
-              <strong id="wifeAdvance">¥0</strong>
-            </article>
+            <div class="advance-payer-row">
+              <button class="advance-card" type="button" data-advance-detail="旦那" aria-label="旦那立替の内訳を表示">
+                <span>旦那立替</span>
+                <strong id="husbandAdvance">¥0</strong>
+              </button>
+              <button class="advance-card" type="button" data-advance-detail="妻" aria-label="妻立替の内訳を表示">
+                <span>妻立替</span>
+                <strong id="wifeAdvance">¥0</strong>
+              </button>
+            </div>
             <article>
               <span>精算目安</span>
               <strong id="advanceSettlement">なし</strong>
             </article>
           </div>
+          <div class="advance-detail" id="advanceDetail" hidden></div>
           <p id="advanceNote" class="advance-note">共有クレカ以外の立替だけを集計します。</p>
         </section>
 
@@ -166,22 +172,47 @@
               </div>
               <button class="icon-button" type="button" id="closeStampPicker" aria-label="閉じる">×</button>
             </div>
-            <div class="stamp-options">
-              <button type="button" data-stamp="🐱" aria-label="猫">🐱</button>
-              <button type="button" data-stamp="🐶" aria-label="犬">🐶</button>
-              <button type="button" data-stamp="🐰" aria-label="うさぎ">🐰</button>
-              <button type="button" data-stamp="🐼" aria-label="パンダ">🐼</button>
-              <button type="button" data-stamp="🐻" aria-label="くま">🐻</button>
-              <button type="button" data-stamp="🐥" aria-label="ひよこ">🐥</button>
-              <button type="button" data-stamp="🌸" aria-label="花">🌸</button>
-              <button type="button" data-stamp="⭐" aria-label="星">⭐</button>
-              <button type="button" data-stamp="🍀" aria-label="クローバー">🍀</button>
-              <button type="button" data-stamp="☕" aria-label="コーヒー">☕</button>
-              <button type="button" data-stamp="🏆" aria-label="ごほうび">🏆</button>
-              <button class="text-stamp" type="button" data-stamp="スン" aria-label="スンスン風">スン</button>
-              <button class="fluffy-stamp" type="button" data-stamp="青もふ" aria-label="青いもふもふ">
-                <span class="fluffy-face" aria-hidden="true"></span>
-              </button>
+            <div class="stamp-category">
+              <span class="stamp-category-label">かわいい系</span>
+              <div class="stamp-options">
+                <button type="button" data-stamp="🐱" aria-label="猫">🐱</button>
+                <button type="button" data-stamp="🐶" aria-label="犬">🐶</button>
+                <button type="button" data-stamp="🐰" aria-label="うさぎ">🐰</button>
+                <button type="button" data-stamp="🐼" aria-label="パンダ">🐼</button>
+                <button type="button" data-stamp="🐻" aria-label="くま">🐻</button>
+                <button type="button" data-stamp="🐥" aria-label="ひよこ">🐥</button>
+                <button type="button" data-stamp="🐧" aria-label="ペンギン">🐧</button>
+                <button type="button" data-stamp="🐨" aria-label="コアラ">🐨</button>
+                <button type="button" data-stamp="🦊" aria-label="きつね">🦊</button>
+                <button type="button" data-stamp="🐹" aria-label="ハムスター">🐹</button>
+                <button type="button" data-stamp="🌸" aria-label="花">🌸</button>
+                <button type="button" data-stamp="⭐" aria-label="星">⭐</button>
+                <button type="button" data-stamp="🍀" aria-label="クローバー">🍀</button>
+                <button type="button" data-stamp="🍓" aria-label="いちご">🍓</button>
+                <button class="fluffy-stamp" type="button" data-stamp="青もふ" aria-label="青いもふもふ">
+                  <span class="fluffy-face" aria-hidden="true"></span>
+                </button>
+              </div>
+            </div>
+            <div class="stamp-category">
+              <span class="stamp-category-label">面白い系</span>
+              <div class="stamp-options">
+                <button type="button" data-stamp="😎" aria-label="どや顔">😎</button>
+                <button type="button" data-stamp="🤠" aria-label="カウボーイ">🤠</button>
+                <button type="button" data-stamp="🥳" aria-label="パーティー">🥳</button>
+                <button type="button" data-stamp="🤖" aria-label="ロボット">🤖</button>
+                <button type="button" data-stamp="👻" aria-label="おばけ">👻</button>
+                <button type="button" data-stamp="🛸" aria-label="UFO">🛸</button>
+                <button type="button" data-stamp="🍄" aria-label="きのこ">🍄</button>
+                <button type="button" data-stamp="🌵" aria-label="サボテン">🌵</button>
+                <button type="button" data-stamp="🧦" aria-label="くつした">🧦</button>
+                <button type="button" data-stamp="🧻" aria-label="トイレットペーパー">🧻</button>
+                <button type="button" data-stamp="🥔" aria-label="じゃがいも">🥔</button>
+                <button type="button" data-stamp="🍤" aria-label="えびフライ">🍤</button>
+                <button type="button" data-stamp="🐙" aria-label="たこ">🐙</button>
+                <button type="button" data-stamp="🪩" aria-label="ミラーボール">🪩</button>
+                <button type="button" data-stamp="🏆" aria-label="ごほうび">🏆</button>
+              </div>
             </div>
             <button class="clear-stamp-button" type="button" id="clearStampButton">スタンプを外す</button>
           </div>
@@ -230,6 +261,7 @@
             </label>
           </div>
           <p class="budget-note">毎月1日始まり、末日締めで集計します。家賃は固定費として毎月の生活費に含めます。</p>
+          <button class="danger-action-button" id="resetAllDataButton" type="button">入力・予算をすべて消す</button>
         </section>
 
         <section class="panel trend-panel app-section" id="trend">
@@ -298,26 +330,34 @@
                 店名・内容
                 <input id="expenseMemo" type="text" placeholder="例：スーパー、電気代、映画" required />
               </label>
-              <label>
-                金額
-                <input id="expenseAmount" type="number" min="1" step="1" placeholder="3800" required />
-              </label>
-              <label>
-                カテゴリ
-                <select id="expenseCategory" required>
-                  <option value="食費">食費</option>
-                  <option value="外食費">外食費</option>
-                  <option value="日用品">日用品</option>
-                  <option value="娯楽費">娯楽費</option>
-                  <option value="光熱費">光熱費</option>
-                  <option value="通信費">通信費</option>
-                  <option value="交通費">交通費</option>
-                  <option value="医療費">医療費</option>
-                  <option value="家賃">家賃</option>
-                  <option value="臨時出費">臨時出費</option>
-                  <option value="その他">その他</option>
-                </select>
-              </label>
+              <div class="split-section" id="splitSection">
+                <div class="split-head">
+                  <span>カテゴリ内訳</span>
+                  <button class="small-action-button" id="addSplitButton" type="button" aria-label="行を追加">＋</button>
+                </div>
+                <div class="split-rows">
+                  <div class="split-row">
+                    <input id="expenseAmount" class="calc-input split-amount" type="text" inputmode="text" pattern="[0-9+-]*" autocomplete="off" placeholder="279+118+290" required aria-label="金額" />
+                    <select id="expenseCategory" class="split-category" required aria-label="カテゴリ">
+                      <option value="食費">食費</option>
+                      <option value="外食費">外食費</option>
+                      <option value="日用品">日用品</option>
+                      <option value="娯楽費">娯楽費</option>
+                      <option value="光熱費">光熱費</option>
+                      <option value="通信費">通信費</option>
+                      <option value="交通費">交通費</option>
+                      <option value="医療費">医療費</option>
+                      <option value="家賃">家賃</option>
+                      <option value="臨時出費">臨時出費</option>
+                      <option value="その他">その他</option>
+                    </select>
+                    <button class="calc-apply-button" type="button" data-apply-calc aria-label="計算する">＝</button>
+                    <small class="amount-preview" id="amountPreview">半角数字と+-だけ使えます</small>
+                  </div>
+                  <div class="split-extra-rows" id="splitRows"></div>
+                </div>
+                <small>食費と日用品を分けたい時は＋で行を増やします。</small>
+              </div>
               <button class="cancel-edit-button" id="cancelEditButton" type="button" hidden>編集をやめる</button>
               <button class="submit-button" type="submit">登録する</button>
             </form>
