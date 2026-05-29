@@ -1027,7 +1027,9 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
   color: var(--ink);
   font-size: 14px;
   line-height: 1.2;
-  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: normal;
+  white-space: nowrap;
 }
 
 .calendar-stamp-button {
@@ -1949,7 +1951,7 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
   }
 
   .calendar-day strong {
-    font-size: 11px;
+    font-size: 10px;
   }
 
   .calendar-stamp-button.add-stamp {

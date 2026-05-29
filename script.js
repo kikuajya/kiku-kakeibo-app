@@ -6,6 +6,7 @@ import {
   signOut,
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import {
+  deleteField,
   doc,
   getFirestore,
   onSnapshot,
@@ -229,10 +230,12 @@ let budgets = loadBudgets();
 let selectedStamp = localStorage.getItem("budget-app-selected-stamp") || "🐱";
 let noSpendStamps = loadNoSpendStamps();
 let pendingStampDate = "";
+let stampSheetScrollPosition = null;
 let authUser = null;
 let cloudUnsubscribe = null;
 let cloudSaveTimer = 0;
 let applyingCloudData = false;
+const deletedNoSpendStampDates = new Set();
 
 const formatter = new Intl.NumberFormat("ja-JP", {
   style: "currency",
@@ -349,8 +352,14 @@ stampPicker?.addEventListener("click", (event) => {
   syncStampButtons();
 });
 
-closeStampPicker?.addEventListener("click", closeStampSheet);
-clearStampButton?.addEventListener("click", clearNoSpendStamp);
+closeStampPicker?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  closeStampSheet();
+});
+clearStampButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  clearNoSpendStamp();
+});
 
 ocrAmountList?.addEventListener("click", (event) => {
   const amountButton = event.target.closest("[data-ocr-amount]");
@@ -361,6 +370,13 @@ ocrAmountList?.addEventListener("click", (event) => {
   document.querySelectorAll("[data-ocr-amount]").forEach((button) => {
     button.classList.toggle("selected", button === amountButton);
   });
+});
+
+calendarGrid?.addEventListener("pointerdown", (event) => {
+  const stampButton = event.target.closest("[data-stamp-date]");
+  if (stampButton) {
+    stampSheetScrollPosition = { left: window.scrollX, top: window.scrollY };
+  }
 });
 
 calendarGrid?.addEventListener("click", (event) => {
@@ -608,9 +624,9 @@ function loadNoSpendStamps() {
   }
 }
 
-function saveNoSpendStamps() {
+function saveNoSpendStamps(immediate = false) {
   localStorage.setItem(`${modeConfig[currentMode].storageKey}-no-spend-stamps`, JSON.stringify(noSpendStamps));
-  queueCloudSave();
+  queueCloudSave(immediate);
 }
 
 function loadBudgets() {
@@ -744,16 +760,29 @@ async function saveCloudData() {
   const ref = cloudDataRef();
   if (!ref) return;
 
+  const deletedStampDates = Array.from(deletedNoSpendStampDates);
+  const payload = {
+    expenses,
+    budgets,
+    updatedAt: serverTimestamp(),
+  };
+
+  if (deletedStampDates.length) {
+    Object.entries(noSpendStamps).forEach(([dateKey, stamp]) => {
+      payload[`noSpendStamps.${dateKey}`] = stamp;
+    });
+    deletedStampDates.forEach((dateKey) => {
+      payload[`noSpendStamps.${dateKey}`] = deleteField();
+    });
+  } else {
+    payload.noSpendStamps = noSpendStamps;
+  }
+
   try {
     setSyncStatus("同期中...");
     await setDoc(
       ref,
-      {
-        expenses,
-        budgets,
-        noSpendStamps,
-        updatedAt: serverTimestamp(),
-      },
+      payload,
       { merge: true },
     );
     setSyncStatus("同期済み");
@@ -788,7 +817,18 @@ function subscribeCloudData() {
       applyingCloudData = true;
       expenses = normalizeExpenses(data.expenses || []);
       budgets = normalizeBudgets(data.budgets || {});
-      noSpendStamps = data.noSpendStamps && typeof data.noSpendStamps === "object" ? data.noSpendStamps : {};
+      const incomingStamps = data.noSpendStamps && typeof data.noSpendStamps === "object"
+        ? { ...data.noSpendStamps }
+        : {};
+      deletedNoSpendStampDates.forEach((dateKey) => {
+        delete incomingStamps[dateKey];
+      });
+      noSpendStamps = incomingStamps;
+      deletedNoSpendStampDates.forEach((dateKey) => {
+        if (!Object.prototype.hasOwnProperty.call(data.noSpendStamps || {}, dateKey)) {
+          deletedNoSpendStampDates.delete(dateKey);
+        }
+      });
       writeLocalCache();
       applyingCloudData = false;
       setSyncStatus(currentMode === "couple" ? "夫婦用を同期済み" : "個人用を同期済み");
@@ -1688,13 +1728,16 @@ function renderAdvanceDetail() {
     button.classList.toggle("selected", button.dataset.advanceDetail === selectedAdvanceDetail);
   });
 
-  if (!selectedAdvanceDetail) {
+  const allItems = monthlyExpenses().filter((expense) => advancePayerFor(expense));
+  if (!allItems.length) {
     detail.hidden = true;
     detail.innerHTML = "";
     return;
   }
 
-  const items = monthlyExpenses().filter((expense) => advancePayerFor(expense) === selectedAdvanceDetail);
+  const items = selectedAdvanceDetail
+    ? allItems.filter((expense) => advancePayerFor(expense) === selectedAdvanceDetail)
+    : allItems;
   detail.hidden = false;
   if (!items.length) {
     detail.innerHTML = `
@@ -1708,16 +1751,17 @@ function renderAdvanceDetail() {
   }
 
   const total = items.reduce((sum, expense) => sum + expense.amount, 0);
+  const heading = selectedAdvanceDetail ? `${selectedAdvanceDetail}立替の内訳` : "立替登録の内訳";
   detail.innerHTML = `
     <div class="advance-detail-head">
-      <strong>${selectedAdvanceDetail}立替の内訳</strong>
+      <strong>${heading}</strong>
       <span>${items.length}件・${yen(total)}</span>
     </div>
     <div class="advance-detail-list">
       ${items.map((expense) => `
         <div class="advance-detail-row">
           <span>${formatShortDate(expense.date)} ${escapeHtml(expense.memo || "メモなし")}</span>
-          <small>${expense.category}</small>
+          <small>${advancePayerFor(expense)} / ${expense.category}</small>
           <strong>${yen(expense.amount)}</strong>
         </div>
       `).join("")}
@@ -1839,36 +1883,57 @@ function openStampSheet(dateKey) {
     return;
   }
 
+  stampSheetScrollPosition ||= { left: window.scrollX, top: window.scrollY };
   pendingStampDate = dateKey;
   const date = new Date(`${dateKey}T00:00:00`);
   stampTargetLabel.textContent = `${date.getMonth() + 1}月${date.getDate()}日`;
+  if (clearStampButton) clearStampButton.dataset.clearStampDate = dateKey;
   stampPicker.hidden = false;
   document.body.classList.add("stamp-sheet-open");
   syncStampButtons();
 }
 
 function applyNoSpendStamp(stamp) {
-  if (!pendingStampDate) return;
+  const stampDate = pendingStampDate;
+  if (!stampDate) return;
 
-  noSpendStamps[pendingStampDate] = stamp;
+  deletedNoSpendStampDates.delete(stampDate);
+  noSpendStamps[stampDate] = stamp;
   saveNoSpendStamps();
   closeStampSheet();
   renderCalendar();
 }
 
 function clearNoSpendStamp() {
-  if (!pendingStampDate) return;
+  const stampDate = pendingStampDate || clearStampButton?.dataset.clearStampDate;
+  if (!stampDate) return;
 
-  delete noSpendStamps[pendingStampDate];
-  saveNoSpendStamps();
+  const scrollPosition = stampSheetScrollPosition || { left: window.scrollX, top: window.scrollY };
+  deletedNoSpendStampDates.add(stampDate);
+  delete noSpendStamps[stampDate];
+  saveNoSpendStamps(true);
   closeStampSheet();
   renderCalendar();
+  restoreScrollPosition(scrollPosition);
 }
 
 function closeStampSheet() {
+  const scrollPosition = stampSheetScrollPosition;
   pendingStampDate = "";
+  if (clearStampButton) delete clearStampButton.dataset.clearStampDate;
   stampPicker.hidden = true;
   document.body.classList.remove("stamp-sheet-open");
+  stampSheetScrollPosition = null;
+  if (scrollPosition) restoreScrollPosition(scrollPosition);
+}
+
+function restoreScrollPosition({ left, top }) {
+  const restore = () => window.scrollTo({ left, top });
+  requestAnimationFrame(() => {
+    restore();
+    window.setTimeout(restore, 0);
+    window.setTimeout(restore, 120);
+  });
 }
 
 function navigateTo(nextView) {
@@ -2134,6 +2199,7 @@ function renderAdvice() {
 }
 
 function render() {
+  const scrollPosition = { left: window.scrollX, top: window.scrollY };
   renderMode();
   renderMetrics();
   renderAdvanceSummary();
@@ -2143,7 +2209,8 @@ function render() {
   renderExpenses();
   renderSelectedDay();
   renderAdvice();
-  updateViewFromHash();
+  updateViewFromHash({ scroll: false });
+  restoreScrollPosition(scrollPosition);
 }
 
 function switchMode(mode) {
@@ -2451,7 +2518,7 @@ function renderTrendSummary(data) {
 
 window.addEventListener("resize", renderTrendChart);
 
-function updateViewFromHash() {
+function updateViewFromHash({ scroll = true } = {}) {
   const view = (window.location.hash || "#dashboard").replace("#", "");
   const views = ["dashboard", "receipt", "budget", "trend", "analysis"];
   const viewLabels = {
@@ -2475,12 +2542,14 @@ function updateViewFromHash() {
 
   if (viewTitle) viewTitle.textContent = viewLabels[activeView];
   if (activeView === "trend") renderTrendChart();
-  requestAnimationFrame(() => {
-    window.scrollTo({ top: 0, left: 0 });
-  });
+  if (scroll) {
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0 });
+    });
+  }
   if (!views.includes(view)) {
     history.replaceState(null, "", "#dashboard");
-    updateViewFromHash();
+    updateViewFromHash({ scroll });
   }
 }
 
