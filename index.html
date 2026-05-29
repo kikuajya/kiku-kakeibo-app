@@ -100,6 +100,16 @@
             <strong id="remainingBudget">¥0</strong>
             <small id="budgetStatus">予算内</small>
           </article>
+          <article class="personal-only">
+            <span>貯金候補</span>
+            <strong id="savingCandidate">¥0</strong>
+            <small id="savingCandidateNote">手取りから支出を差引</small>
+          </article>
+          <article class="personal-only">
+            <span>今月の貯金</span>
+            <strong id="actualSavings">¥0</strong>
+            <small id="savingStatus">未入力</small>
+          </article>
           <article>
             <span>食費</span>
             <strong id="foodSpend">¥0</strong>
@@ -226,42 +236,99 @@
             </div>
             <span class="autosave-label">自動保存</span>
           </div>
-          <div class="budget-grid">
-            <label>
-              全体予算
-              <input id="budgetTotal" type="text" inputmode="numeric" data-budget-key="total" />
-            </label>
-            <label>
-              家賃（固定）
-              <input id="budgetRent" type="text" inputmode="numeric" data-budget-key="rent" />
-            </label>
-            <label>
-              光熱費
-              <input id="budgetUtilities" type="text" inputmode="numeric" data-budget-key="utilities" />
-            </label>
-            <label>
-              食費
-              <input id="budgetFood" type="text" inputmode="numeric" data-budget-key="food" />
-            </label>
-            <label>
-              外食費
-              <input id="budgetDining" type="text" inputmode="numeric" data-budget-key="dining" />
-            </label>
-            <label>
-              娯楽費
-              <input id="budgetEntertainment" type="text" inputmode="numeric" data-budget-key="entertainment" />
-            </label>
-            <label>
-              臨時出費
-              <input id="budgetSpecial" type="text" inputmode="numeric" data-budget-key="special" />
-            </label>
-            <label>
-              その他
-              <input id="budgetOther" type="text" inputmode="numeric" data-budget-key="other" />
-            </label>
+          <div class="budget-sections">
+            <div class="budget-group personal-only">
+              <span class="budget-group-title">収入・貯金</span>
+              <div class="budget-grid compact">
+                <label>
+                  今月の手取り
+                  <input id="budgetIncome" type="text" inputmode="numeric" data-budget-key="income" />
+                </label>
+                <label>
+                  今月の貯金額
+                  <span class="field-hint">実際に貯金へ移した額</span>
+                  <input id="budgetSavings" type="text" inputmode="numeric" data-budget-key="savings" />
+                </label>
+              </div>
+            </div>
+            <div class="budget-group">
+              <div class="budget-group-head">
+                <span class="budget-group-title">全体予算</span>
+              </div>
+              <div class="budget-grid compact">
+                <label>
+                  全体予算
+                  <span class="field-hint">固定費・変動費を合計</span>
+                  <input id="budgetTotal" type="text" inputmode="numeric" data-budget-key="total" readonly />
+                </label>
+              </div>
+            </div>
+            <div class="budget-group">
+              <div class="budget-group-head">
+                <span class="budget-group-title">固定費</span>
+                <button class="budget-clear-button" type="button" data-clear-budget="fixed">クリア</button>
+              </div>
+              <div class="budget-grid compact">
+                <label data-budget-field="rent" data-budget-modes="couple">
+                  家賃
+                  <input id="budgetRent" type="text" inputmode="numeric" data-budget-key="rent" />
+                </label>
+                <label data-budget-field="scholarship" data-budget-modes="personal">
+                  奨学金
+                  <input id="budgetScholarship" type="text" inputmode="numeric" data-budget-key="scholarship" />
+                </label>
+                <label data-budget-field="communication" data-budget-modes="couple">
+                  通信費
+                  <input id="budgetCommunication" type="text" inputmode="numeric" data-budget-key="communication" />
+                </label>
+              </div>
+            </div>
+            <div class="budget-group">
+              <div class="budget-group-head">
+                <span class="budget-group-title">変動費</span>
+                <button class="budget-clear-button" type="button" data-clear-budget="variable">クリア</button>
+              </div>
+              <div class="budget-grid compact">
+                <label data-budget-field="food" data-budget-modes="couple personal">
+                  食費
+                  <input id="budgetFood" type="text" inputmode="numeric" data-budget-key="food" />
+                </label>
+                <label data-budget-field="lunch" data-budget-modes="personal">
+                  ランチ（外食）
+                  <input id="budgetLunch" type="text" inputmode="numeric" data-budget-key="lunch" />
+                </label>
+                <label data-budget-field="dining" data-budget-modes="couple personal">
+                  外食費
+                  <input id="budgetDining" type="text" inputmode="numeric" data-budget-key="dining" />
+                </label>
+                <label data-budget-field="clothingBeauty" data-budget-modes="personal">
+                  衣服・美容
+                  <input id="budgetClothingBeauty" type="text" inputmode="numeric" data-budget-key="clothingBeauty" />
+                </label>
+                <label data-budget-field="furnitureAppliances" data-budget-modes="couple">
+                  家具家電
+                  <input id="budgetFurnitureAppliances" type="text" inputmode="numeric" data-budget-key="furnitureAppliances" />
+                </label>
+                <label data-budget-field="utilities" data-budget-modes="couple">
+                  光熱費
+                  <input id="budgetUtilities" type="text" inputmode="numeric" data-budget-key="utilities" />
+                </label>
+                <label data-budget-field="entertainment" data-budget-modes="couple personal">
+                  娯楽費
+                  <input id="budgetEntertainment" type="text" inputmode="numeric" data-budget-key="entertainment" />
+                </label>
+                <label data-budget-field="special" data-budget-modes="couple personal">
+                  臨時出費
+                  <input id="budgetSpecial" type="text" inputmode="numeric" data-budget-key="special" />
+                </label>
+                <label data-budget-field="other" data-budget-modes="couple personal">
+                  その他
+                  <input id="budgetOther" type="text" inputmode="numeric" data-budget-key="other" />
+                </label>
+              </div>
+            </div>
           </div>
-          <p class="budget-note">毎月1日始まり、末日締めで集計します。家賃は固定費として毎月の生活費に含めます。</p>
-          <button class="danger-action-button" id="resetAllDataButton" type="button">入力・予算をすべて消す</button>
+          <p class="budget-note">毎月1日始まり、末日締めで集計します。固定費に入れた予算は毎月の生活費に自動で含めます。</p>
         </section>
 
         <section class="panel trend-panel app-section" id="trend">
@@ -340,14 +407,19 @@
                     <input id="expenseAmount" class="calc-input split-amount" type="text" inputmode="text" pattern="[0-9+-]*" autocomplete="off" placeholder="279+118+290" required aria-label="金額" />
                     <select id="expenseCategory" class="split-category" required aria-label="カテゴリ">
                       <option value="食費">食費</option>
+                      <option value="ランチ（外食）">ランチ（外食）</option>
                       <option value="外食費">外食費</option>
                       <option value="日用品">日用品</option>
+                      <option value="衣服・美容">衣服・美容</option>
+                      <option value="家具家電">家具家電</option>
                       <option value="娯楽費">娯楽費</option>
+                      <option value="キャンプ（娯楽費）">キャンプ（娯楽費）</option>
                       <option value="光熱費">光熱費</option>
                       <option value="通信費">通信費</option>
                       <option value="交通費">交通費</option>
                       <option value="医療費">医療費</option>
                       <option value="家賃">家賃</option>
+                      <option value="奨学金">奨学金</option>
                       <option value="臨時出費">臨時出費</option>
                       <option value="その他">その他</option>
                     </select>

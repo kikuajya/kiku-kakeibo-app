@@ -17,6 +17,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -436,25 +440,80 @@ body.view-analysis .wide-grid {
   font-weight: 800;
 }
 
+.budget-sections {
+  display: grid;
+  gap: 12px;
+}
+
+.budget-group {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+}
+
+.budget-group-title {
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.budget-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.budget-clear-button {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffefa;
+  color: var(--muted);
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .budget-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
+}
+
+.budget-grid.compact {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .budget-grid label {
   display: grid;
-  gap: 7px;
+  gap: 5px;
   color: #3f4449;
   font-weight: 700;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .budget-grid input {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 11px 12px;
+  padding: 9px 10px;
   background: #fffefa;
+}
+
+.budget-grid input[readonly] {
+  background: #edf5ef;
+  color: var(--green);
+  font-weight: 900;
 }
 
 .budget-note {
@@ -462,16 +521,6 @@ body.view-analysis .wide-grid {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
-}
-
-.danger-action-button {
-  margin-top: 12px;
-  border: 1px solid rgba(185, 71, 60, 0.35);
-  border-radius: 8px;
-  background: #fff8f5;
-  color: var(--red);
-  padding: 10px 12px;
-  font-weight: 800;
 }
 
 .trend-panel canvas {
@@ -566,6 +615,19 @@ body.view-analysis .wide-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
+}
+
+body:not(.personal-mode) .personal-only {
+  display: none;
+}
+
+body:not(.personal-mode) .metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+body:not(.personal-mode) .metrics .metric-primary,
+body:not(.personal-mode) .metrics article:not(.metric-primary) {
+  grid-column: span 1;
 }
 
 .metrics article,

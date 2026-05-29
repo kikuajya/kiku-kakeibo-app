@@ -33,10 +33,17 @@ const receiptAmountOcrLanguage = "eng";
 const receiptTextOcrLanguages = ["jpn", "eng"];
 
 const defaultBudgets = {
-  total: 320000,
+  income: 0,
+  savings: 0,
+  total: 0,
   rent: 80000,
+  scholarship: 0,
   utilities: 25000,
+  communication: 0,
   food: 80000,
+  lunch: 0,
+  clothingBeauty: 0,
+  furnitureAppliances: 0,
   dining: 30000,
   entertainment: 20000,
   special: 20000,
@@ -45,28 +52,38 @@ const defaultBudgets = {
 
 const categories = [
   "食費",
+  "ランチ（外食）",
   "外食費",
   "日用品",
+  "衣服・美容",
+  "家具家電",
   "娯楽費",
+  "キャンプ（娯楽費）",
   "光熱費",
   "通信費",
   "交通費",
   "医療費",
   "家賃",
+  "奨学金",
   "臨時出費",
   "その他",
 ];
 
 const colorByCategory = {
   食費: "#27745c",
+  "ランチ（外食）": "#d56a45",
   外食費: "#b9473c",
   日用品: "#2d5f8f",
+  "衣服・美容": "#9b5d8f",
+  家具家電: "#4f6f8f",
   娯楽費: "#b88428",
+  "キャンプ（娯楽費）": "#8a6a2d",
   光熱費: "#7164a3",
   通信費: "#4a7c8a",
   交通費: "#6f7d3c",
   医療費: "#a75374",
   家賃: "#4b5967",
+  奨学金: "#5d6f8f",
   臨時出費: "#8f5d2a",
   その他: "#6c6f75",
 };
@@ -126,15 +143,20 @@ const diningStoreKeywords = [
 ];
 
 const categoryKeywords = {
-  外食費: ["外食", "レストラン", "居酒屋", "カフェ", "喫茶", "ランチ", "ディナー", "ラーメン", "寿司", "焼肉", "lunch", "dinner", ...diningStoreKeywords],
+  "ランチ（外食）": ["ランチ", "昼食", "lunch"],
+  外食費: ["外食", "レストラン", "居酒屋", "カフェ", "喫茶", "ディナー", "ラーメン", "寿司", "焼肉", "dinner", ...diningStoreKeywords],
   食費: ["スーパー", "食材", "食品", "青果", "精肉", "鮮魚", "惣菜", "米", "パン", "牛乳", "イオン", "西友", "ライフ", "マルエツ", "オーケー", "成城石井", "costco", "super"],
   日用品: ["日用品", "洗剤", "ティッシュ", "トイレット", "シャンプー", "ドラッグ", "薬局", "マツキヨ", "ウエルシア", "サンドラッグ", "drug", "daily"],
+  "衣服・美容": ["服", "衣服", "衣料", "美容", "美容院", "ヘアカット", "化粧品", "コスメ", "ユニクロ", "gu", "しまむら", "無印良品", "beauty", "cosme"],
+  家具家電: ["家具", "家電", "冷蔵庫", "洗濯機", "電子レンジ", "掃除機", "照明", "ニトリ", "ikea", "無印良品", "ヤマダ", "ビックカメラ", "ヨドバシ", "nojima"],
+  "キャンプ（娯楽費）": ["キャンプ", "キャンプ場", "camp", "camping"],
   娯楽費: ["映画", "カラオケ", "ゲーム", "本", "漫画", "ライブ", "チケット", "netflix", "spotify", "movie", "game"],
   光熱費: ["電気", "ガス", "水道", "光熱", "東京電力", "東京ガス", "electric", "gas", "water"],
   通信費: ["スマホ", "携帯", "通信", "wifi", "wi-fi", "インターネット", "docomo", "au", "softbank", "rakuten"],
   交通費: ["交通", "電車", "バス", "タクシー", "ガソリン", "駐車", "jr", "suica", "pasmo", "taxi"],
   医療費: ["病院", "クリニック", "薬", "歯科", "眼科", "皮膚科", "medical", "clinic"],
   家賃: ["家賃", "賃料", "管理費", "rent"],
+  奨学金: ["奨学金", "返済", "学生支援", "scholarship"],
   臨時出費: ["臨時", "お歳暮", "お中元", "祝い", "香典", "プレゼント", "帰省", "旅行", "修理", "特別", "gift", "special"],
 };
 
@@ -174,6 +196,32 @@ const modeConfig = {
   },
 };
 
+const budgetGroupsByMode = {
+  couple: {
+    fixed: ["rent", "communication"],
+    variable: ["utilities", "food", "dining", "furnitureAppliances", "entertainment", "special", "other"],
+  },
+  personal: {
+    fixed: ["scholarship"],
+    variable: ["food", "lunch", "dining", "clothingBeauty", "entertainment", "special", "other"],
+  },
+};
+
+const fixedBudgetItemMap = {
+  rent: { category: "家賃", memo: "家賃（固定）" },
+  scholarship: { category: "奨学金", memo: "奨学金（固定）" },
+  utilities: { category: "光熱費", memo: "光熱費（固定）" },
+  communication: { category: "通信費", memo: "通信費（固定）" },
+};
+
+const categoryModeMap = {
+  "ランチ（外食）": ["personal"],
+  "衣服・美容": ["personal"],
+  家具家電: ["couple"],
+  "キャンプ（娯楽費）": ["couple"],
+  奨学金: ["personal"],
+};
+
 let currentMode = localStorage.getItem("budget-app-mode") || "couple";
 let selectedAdvancePayer = "";
 let expenses = loadExpenses();
@@ -210,7 +258,6 @@ const ocrReview = document.querySelector("#ocrReview");
 const ocrAmountList = document.querySelector("#ocrAmountList");
 const ocrRawText = document.querySelector("#ocrRawText");
 const seedButton = document.querySelector("#seedButton");
-const resetAllDataButton = document.querySelector("#resetAllDataButton");
 const openReceiptButton = document.querySelector("#openReceiptButton");
 const modeLabel = document.querySelector("#modeLabel");
 const viewTitle = document.querySelector("#viewTitle");
@@ -371,14 +418,16 @@ monthSelect.addEventListener("change", () => {
 
 budgetInputs.forEach((input) => {
   input.addEventListener("input", () => {
+    if (input.dataset.budgetKey === "total") return;
     budgets[input.dataset.budgetKey] = parseMoney(input.value);
+    syncTotalBudget();
     saveBudgets();
+    renderBudgetTotal();
     renderMetrics();
     renderCategories();
     renderCalendar();
     renderAdvice();
     renderTrendChart();
-    document.querySelector("#monthlyGoal").textContent = yen(budgets.total);
   });
 
   input.addEventListener("blur", () => {
@@ -386,10 +435,23 @@ budgetInputs.forEach((input) => {
   });
 });
 
-resetAllDataButton?.addEventListener("click", async () => {
-  const ok = window.confirm("夫婦用・個人用の入力履歴、予算、スタンプをすべて消します。元に戻せません。実行しますか？");
-  if (!ok) return;
-  await resetAllData();
+document.querySelectorAll("[data-clear-budget]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const keys = budgetKeysForGroup(button.dataset.clearBudget);
+    keys.forEach((key) => {
+      budgets[key] = 0;
+    });
+    syncTotalBudget();
+    saveBudgets();
+    renderBudgetInputs();
+    renderMetrics();
+    renderCategories();
+    renderCalendar();
+    renderExpenses();
+    renderSelectedDay();
+    renderAdvice();
+    renderTrendChart();
+  });
 });
 
 openReceiptButton.addEventListener("click", () => {
@@ -471,8 +533,8 @@ form.addEventListener("submit", (event) => {
     advancePayer: currentMode === "couple" ? selectedAdvancePayer : "",
   };
   const entries = [
-    { amount: mainAmount, category: categoryInput.value },
-    ...splitParts,
+    { amount: mainAmount, category: categoryForCurrentMode(categoryInput.value) },
+    ...splitParts.map((part) => ({ ...part, category: categoryForCurrentMode(part.category) })),
   ];
   const createdExpenses = entries.map((entry, index) => ({
     ...baseExpense,
@@ -553,18 +615,62 @@ function saveNoSpendStamps() {
 
 function loadBudgets() {
   const saved = localStorage.getItem(`${modeConfig[currentMode].storageKey}-budgets`);
-  if (!saved) return { ...defaultBudgets };
+  if (!saved) return normalizeBudgets(defaultBudgets);
 
   try {
-    return { ...defaultBudgets, ...JSON.parse(saved) };
+    return normalizeBudgets({ ...defaultBudgets, ...JSON.parse(saved) });
   } catch {
-    return { ...defaultBudgets };
+    return normalizeBudgets(defaultBudgets);
   }
 }
 
 function saveBudgets() {
+  syncTotalBudget();
   localStorage.setItem(`${modeConfig[currentMode].storageKey}-budgets`, JSON.stringify(budgets));
   queueCloudSave();
+}
+
+function normalizeBudgets(source) {
+  const normalized = { ...defaultBudgets, ...(source || {}) };
+  normalized.total = calculatedTotalBudget(normalized);
+  return normalized;
+}
+
+function calculatedTotalBudget(source = budgets) {
+  return budgetKeysForMode().reduce(
+    (sum, key) => sum + (Number(source[key]) || 0),
+    0,
+  );
+}
+
+function syncTotalBudget() {
+  budgets.total = calculatedTotalBudget();
+}
+
+function budgetKeysForGroup(group, mode = currentMode) {
+  return budgetGroupsByMode[mode]?.[group] || [];
+}
+
+function budgetKeysForMode(mode = currentMode) {
+  return [...budgetKeysForGroup("fixed", mode), ...budgetKeysForGroup("variable", mode)];
+}
+
+function renderBudgetTotal() {
+  const totalInput = document.querySelector("#budgetTotal");
+  if (totalInput) totalInput.value = comma(budgets.total || 0);
+  document.querySelector("#monthlyGoal").textContent = yen(budgets.total);
+}
+
+function renderBudgetInputs() {
+  document.querySelectorAll("[data-budget-modes]").forEach((field) => {
+    const modes = field.dataset.budgetModes.split(/\s+/);
+    field.hidden = !modes.includes(currentMode);
+  });
+
+  budgetInputs.forEach((input) => {
+    input.value = comma(budgets[input.dataset.budgetKey] || 0);
+  });
+  renderBudgetTotal();
 }
 
 function blankBudgets() {
@@ -681,7 +787,7 @@ function subscribeCloudData() {
       const data = snapshot.data() || {};
       applyingCloudData = true;
       expenses = normalizeExpenses(data.expenses || []);
-      budgets = { ...defaultBudgets, ...(data.budgets || {}) };
+      budgets = normalizeBudgets(data.budgets || {});
       noSpendStamps = data.noSpendStamps && typeof data.noSpendStamps === "object" ? data.noSpendStamps : {};
       writeLocalCache();
       applyingCloudData = false;
@@ -741,12 +847,16 @@ function percent(value, total) {
 
 function guessCategory(text) {
   const source = normalizeText(text);
+  if (currentMode === "personal" && ["ランチ", "昼食", "lunch"].some((keyword) => source.includes(normalizeText(keyword)))) {
+    return "ランチ（外食）";
+  }
+
   for (const rule of storeCategoryRules) {
-    if (rule.keywords.some((keyword) => source.includes(normalizeText(keyword)))) return rule.category;
+    if (rule.keywords.some((keyword) => source.includes(normalizeText(keyword)))) return categoryForCurrentMode(rule.category);
   }
 
   for (const [category, keywords] of Object.entries(categoryKeywords)) {
-    if (keywords.some((keyword) => source.includes(normalizeText(keyword)))) return category;
+    if (keywords.some((keyword) => source.includes(normalizeText(keyword)))) return categoryForCurrentMode(category);
   }
   return "食費";
 }
@@ -1195,7 +1305,7 @@ function cleanupStoreLine(line) {
 function applyReceiptDraft(draft) {
   if (draft.date) dateInput.value = draft.date;
   memoInput.value = draft.memo;
-  categoryInput.value = draft.category;
+  categoryInput.value = categoryForCurrentMode(draft.category);
   if (draft.amount) amountInput.value = draft.amount;
   updateAmountPreview(amountInput, amountPreview);
   renderOcrReview(draft);
@@ -1289,9 +1399,33 @@ function getSplitParts() {
 }
 
 function categoryOptionsHtml(selectedCategory) {
-  return categories
+  return visibleCategories()
     .map((category) => `<option value="${category}"${category === selectedCategory ? " selected" : ""}>${category}</option>`)
     .join("");
+}
+
+function visibleCategories(mode = currentMode) {
+  return categories.filter((category) => {
+    const modes = categoryModeMap[category];
+    return !modes || modes.includes(mode);
+  });
+}
+
+function categoryForCurrentMode(category) {
+  if (visibleCategories().includes(category)) return category;
+  if (category === "ランチ（外食）") return "外食費";
+  if (category === "衣服・美容" || category === "家具家電") return "日用品";
+  if (category === "キャンプ（娯楽費）") return "娯楽費";
+  if (category === "奨学金") return "その他";
+  return visibleCategories()[0] || "その他";
+}
+
+function renderCategoryOptions() {
+  document.querySelectorAll(".split-category").forEach((select) => {
+    const selected = categoryForCurrentMode(select.value);
+    select.innerHTML = categoryOptionsHtml(selected);
+    select.value = selected;
+  });
 }
 
 function parseAmountExpression(value) {
@@ -1380,7 +1514,7 @@ function setScanStatus(level, title, body) {
 }
 
 function categoryTotals() {
-  return categories.map((category) => ({
+  return visibleCategories().map((category) => ({
     category,
     total: categoryTotal(category),
     budget: budgetForCategory(category),
@@ -1484,20 +1618,35 @@ function buildAdvice(total, food, dining) {
 
 function renderMetrics() {
   const total = currentTotalSpend();
-  const food = sumBy((expense) => expense.category === "食費" || expense.category === "外食費");
-  const dining = sumBy((expense) => expense.category === "外食費");
-  const diningCount = monthlyExpenses().filter((expense) => expense.category === "外食費").length;
+  const diningCategories = ["外食費", "ランチ（外食）"];
+  const food = sumBy((expense) => expense.category === "食費" || diningCategories.includes(expense.category));
+  const dining = sumBy((expense) => diningCategories.includes(expense.category));
+  const diningCount = monthlyExpenses().filter((expense) => diningCategories.includes(expense.category)).length;
   const remaining = budgets.total - total;
+  const savingCandidate = budgets.income ? (budgets.income || 0) - total : 0;
+  const savingGap = (budgets.savings || 0) - savingCandidate;
 
   document.querySelector("#totalSpend").textContent = yen(total);
   document.querySelector("#foodSpend").textContent = yen(food);
   document.querySelector("#diningSpend").textContent = yen(dining);
   document.querySelector("#diningCount").textContent = `${diningCount}回`;
   document.querySelector("#remainingBudget").textContent = yen(remaining);
+  document.querySelector("#savingCandidate").textContent = yen(savingCandidate);
+  document.querySelector("#actualSavings").textContent = yen(budgets.savings || 0);
   document.querySelector("#foodShare").textContent = `生活費の${percent(food, total)}%`;
   document.querySelector("#diningShare").textContent = `食費の${percent(dining, food)}%`;
   document.querySelector("#totalTrend").textContent = total ? `予算の${percent(total, budgets.total)}%を使用` : "データを入力してください";
   document.querySelector("#budgetStatus").textContent = remaining >= 0 ? "予算内" : "予算超過";
+  document.querySelector("#savingCandidateNote").textContent = budgets.income ? `手取り${yen(budgets.income)}から差引` : "手取りを予算に入力";
+  document.querySelector("#savingStatus").textContent = !budgets.income
+    ? "手取りを予算に入力"
+    : budgets.savings
+      ? savingGap >= 0
+        ? `候補より${yen(savingGap)}多め`
+        : `候補まであと${yen(Math.abs(savingGap))}`
+      : savingCandidate < 0
+        ? `手取りより${yen(Math.abs(savingCandidate))}超過`
+        : "貯金額を予算に入力";
 }
 
 function renderAdvanceSummary() {
@@ -1657,7 +1806,7 @@ function renderCalendar() {
 
 function dailyExpenseMap() {
   const map = new Map();
-  const visibleExpenses = [...monthlyExpenses(), ...(budgets.rent ? [fixedRentExpense()] : [])];
+  const visibleExpenses = [...monthlyExpenses(), ...fixedMonthlyExpenses()];
 
   visibleExpenses.forEach((expense) => {
     const dateKey = expense.date;
@@ -1737,7 +1886,8 @@ function startEditExpense(id) {
   dateInput.value = expense.date;
   memoInput.value = expense.memo;
   amountInput.value = expense.amount;
-  categoryInput.value = expense.category;
+  renderCategoryOptions();
+  categoryInput.value = categoryForCurrentMode(expense.category);
   clearSplitRows();
   updateAmountPreview(amountInput, amountPreview);
   selectedAdvancePayer = currentMode === "couple" ? advancePayerFor(expense) : "";
@@ -1788,7 +1938,7 @@ function renderSelectedDay() {
   const entries = expenses
     .filter((expense) => expense.date === dateKey)
     .sort((a, b) => b.amount - a.amount);
-  const fixed = budgets.rent && dateKey === formatDateLocal(currentMonthRange(selectedMonthOffset).start) ? [fixedRentExpense()] : [];
+  const fixed = dateKey === formatDateLocal(currentMonthRange(selectedMonthOffset).start) ? fixedMonthlyExpenses() : [];
   const total = [...entries, ...fixed].reduce((sum, expense) => sum + expense.amount, 0);
   const date = new Date(`${dateKey}T00:00:00`);
   selectedDateLabel.textContent = `${date.getMonth() + 1}月${date.getDate()}日の登録`;
@@ -1942,7 +2092,7 @@ function renderCategoryPieLegend(data, total) {
 function renderExpenses() {
   const list = document.querySelector("#expenseList");
   if (!list) return;
-  const fixedExpenses = budgets.rent ? [fixedRentExpense()] : [];
+  const fixedExpenses = fixedMonthlyExpenses();
   const visible = [...fixedExpenses, ...monthlyExpenses()].slice(0, 8);
 
   if (!visible.length) {
@@ -2027,11 +2177,8 @@ function renderMode() {
   heroTitle.textContent = config.hero;
   monthLabel.textContent = currentMonthLabel();
   renderMonthOptions();
-  document.querySelector("#monthlyGoal").textContent = yen(budgets.total);
-
-  budgetInputs.forEach((input) => {
-    input.value = comma(budgets[input.dataset.budgetKey] || 0);
-  });
+  renderCategoryOptions();
+  renderBudgetInputs();
 
   document.querySelectorAll("[data-mode]").forEach((button) => {
     button.classList.toggle("selected", button.dataset.mode === currentMode);
@@ -2046,14 +2193,23 @@ function syncStampButtons() {
 }
 
 function budgetForCategory(category) {
-  if (category === "家賃") return budgets.rent;
-  if (category === "光熱費") return budgets.utilities;
-  if (category === "食費") return budgets.food;
-  if (category === "外食費") return budgets.dining;
-  if (category === "娯楽費") return budgets.entertainment;
-  if (category === "臨時出費") return budgets.special;
-  if (category === "その他") return budgets.other;
-  return 0;
+  const map = {
+    家賃: "rent",
+    奨学金: "scholarship",
+    光熱費: "utilities",
+    通信費: "communication",
+    食費: "food",
+    "ランチ（外食）": "lunch",
+    外食費: "dining",
+    "衣服・美容": "clothingBeauty",
+    家具家電: "furnitureAppliances",
+    娯楽費: "entertainment",
+    "キャンプ（娯楽費）": "entertainment",
+    臨時出費: "special",
+    その他: "other",
+  };
+  const key = map[category];
+  return key ? budgets[key] || 0 : 0;
 }
 
 function monthlyExpenses() {
@@ -2080,14 +2236,25 @@ function monthRangeFor(offsetFromCurrent) {
   return { start, end };
 }
 
-function fixedRentExpense() {
+function fixedMonthlyExpense(category, memo, amount) {
   return {
     date: formatDateLocal(currentMonthRange(selectedMonthOffset).start),
-    memo: "家賃（固定）",
-    amount: budgets.rent || 0,
-    category: "家賃",
+    memo,
+    amount,
+    category,
     payer: currentMode === "couple" ? "共通" : "自分",
+    fixed: true,
   };
+}
+
+function fixedMonthlyExpenses() {
+  return budgetKeysForGroup("fixed")
+    .map((key) => {
+      const item = fixedBudgetItemMap[key];
+      if (!item) return null;
+      return fixedMonthlyExpense(item.category, item.memo, budgets[key] || 0);
+    })
+    .filter((expense) => expense && expense.amount > 0);
 }
 
 function advancePayerFor(expense) {
@@ -2124,11 +2291,15 @@ function paymentLabel(expense) {
 
 function categoryTotal(category) {
   const entered = sumBy((expense) => expense.category === category);
-  return category === "家賃" ? entered + (budgets.rent || 0) : entered;
+  const fixed = fixedMonthlyExpenses()
+    .filter((expense) => expense.category === category)
+    .reduce((sum, expense) => sum + expense.amount, 0);
+  return entered + fixed;
 }
 
 function currentTotalSpend() {
-  return sumBy(() => true) + (budgets.rent || 0);
+  const fixed = fixedMonthlyExpenses().reduce((sum, expense) => sum + expense.amount, 0);
+  return sumBy(() => true) + fixed;
 }
 
 function formatDateLocal(date) {
@@ -2167,7 +2338,7 @@ function monthlyTrendData() {
 
     return {
       label: `${start.getMonth() + 1}月`,
-      total: enteredTotal + (budgets.rent || 0),
+      total: enteredTotal + fixedMonthlyExpenses().reduce((sum, expense) => sum + expense.amount, 0),
       dining: diningTotal,
     };
   });
