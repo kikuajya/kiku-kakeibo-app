@@ -135,14 +135,16 @@
           </div>
           <div class="advance-summary-grid">
             <div class="advance-payer-row">
-              <button class="advance-card" type="button" data-advance-detail="旦那" aria-label="旦那立替の内訳を表示">
+              <article class="advance-card">
                 <span>旦那立替</span>
                 <strong id="husbandAdvance">¥0</strong>
-              </button>
-              <button class="advance-card" type="button" data-advance-detail="妻" aria-label="妻立替の内訳を表示">
+                <button class="advance-detail-toggle" type="button" data-advance-detail="旦那" aria-expanded="false">内訳</button>
+              </article>
+              <article class="advance-card">
                 <span>妻立替</span>
                 <strong id="wifeAdvance">¥0</strong>
-              </button>
+                <button class="advance-detail-toggle" type="button" data-advance-detail="妻" aria-expanded="false">内訳</button>
+              </article>
             </div>
             <article>
               <span>精算目安</span>
@@ -389,10 +391,20 @@
             </div>
 
             <form id="expenseForm" class="expense-form">
-              <label>
-                日付
-                <input id="expenseDate" type="date" required />
-              </label>
+              <div class="form-date-payment-row">
+                <label>
+                  日付
+                  <input id="expenseDate" type="date" required />
+                </label>
+                <div class="advance-control form-advance-control">
+                  <span>支払い</span>
+                  <div class="payer-toggle" role="group" aria-label="日付付近の立替フラグ">
+                    <button class="selected" type="button" data-advance-payer="">共有</button>
+                    <button type="button" data-advance-payer="旦那">旦那</button>
+                    <button type="button" data-advance-payer="妻">妻</button>
+                  </div>
+                </div>
+              </div>
               <label>
                 店名・内容
                 <input id="expenseMemo" type="text" placeholder="例：スーパー、電気代、映画" required />
@@ -427,6 +439,24 @@
                     <small class="amount-preview" id="amountPreview">半角数字と+-だけ使えます</small>
                   </div>
                   <div class="split-extra-rows" id="splitRows"></div>
+                  <div class="calculator-pad" id="calculatorPad" hidden aria-label="電卓">
+                    <button type="button" data-calc-key="7">7</button>
+                    <button type="button" data-calc-key="8">8</button>
+                    <button type="button" data-calc-key="9">9</button>
+                    <button type="button" data-calc-key="back">⌫</button>
+                    <button type="button" data-calc-key="4">4</button>
+                    <button type="button" data-calc-key="5">5</button>
+                    <button type="button" data-calc-key="6">6</button>
+                    <button type="button" data-calc-key="clear">C</button>
+                    <button type="button" data-calc-key="1">1</button>
+                    <button type="button" data-calc-key="2">2</button>
+                    <button type="button" data-calc-key="3">3</button>
+                    <button type="button" data-calc-key="+">＋</button>
+                    <button type="button" data-calc-key="0">0</button>
+                    <button type="button" data-calc-key="00">00</button>
+                    <button type="button" data-calc-key="-">−</button>
+                    <button type="button" data-calc-key="apply">＝</button>
+                  </div>
                 </div>
                 <small>食費と日用品を分けたい時は＋で行を増やします。</small>
               </div>

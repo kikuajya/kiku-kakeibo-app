@@ -727,7 +727,19 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
   text-align: left;
 }
 
-.advance-card.selected {
+.advance-detail-toggle {
+  justify-self: start;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.advance-detail-toggle.selected {
   border-color: var(--green);
   background: #edf7f2;
   box-shadow: inset 0 0 0 1px rgba(39, 116, 92, 0.18);
@@ -1182,6 +1194,17 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
   font-weight: 800;
 }
 
+.form-date-payment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.form-advance-control {
+  justify-items: start;
+}
+
 .payer-toggle button {
   border: 0;
   background: transparent;
@@ -1463,6 +1486,10 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
   gap: 8px;
 }
 
+.calculator-pad[hidden] {
+  display: none;
+}
+
 .calculator-pad button {
   min-height: 42px;
   border: 1px solid var(--line);
@@ -1619,13 +1646,19 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
 
 .category-row {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) 96px;
+  gap: 6px;
+}
+
+.category-row-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
-  align-items: center;
+  align-items: baseline;
 }
 
 .category-name {
   font-weight: 800;
+  min-width: 0;
 }
 
 .bar-track {
@@ -1645,6 +1678,7 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
 .category-amount {
   text-align: right;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .expense-item,
@@ -2067,6 +2101,10 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
     box-shadow: 0 10px 24px rgba(39, 116, 92, 0.22);
   }
 
+  .form-date-payment-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .selected-day-item {
     grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 6px;
@@ -2077,13 +2115,8 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
     height: 32px;
   }
 
-  .category-row {
-    grid-template-columns: 76px minmax(0, 1fr);
-  }
-
   .category-amount {
-    grid-column: 2;
-    text-align: left;
+    font-size: 13px;
   }
 
   .expense-item {

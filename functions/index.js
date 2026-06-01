@@ -14,6 +14,10 @@ const MAX_IMAGE_BASE64_LENGTH = 5_000_000;
 const ALLOWED_UIDS = new Set([
   "scG6gjxpbzeN9uUPORQmuaei4rd2",
 ]);
+const ALLOWED_EMAILS = new Set([
+  "ajyasutacc@gmail.com",
+  "minayon@gmail.com",
+]);
 const ALLOWED_ORIGINS = new Set([
   "http://127.0.0.1:4180",
   "http://localhost:4180",
@@ -107,7 +111,7 @@ exports.analyzeReceipt = onCall(
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "ログイン後にOCRを使えます。");
     }
-    if (!ALLOWED_UIDS.has(request.auth.uid)) {
+    if (!isAllowedUser(request.auth)) {
       throw new HttpsError("permission-denied", "このアカウントではOCRを使えません。");
     }
 
@@ -165,7 +169,7 @@ exports.analyzeReceiptHttp = onRequest(
         throw new HttpFunctionError(401, "unauthenticated", "ログイン後にOCRを使えます。");
       }
       const decodedToken = await admin.auth().verifyIdToken(token);
-      if (!ALLOWED_UIDS.has(decodedToken.uid)) {
+      if (!isAllowedUser(decodedToken)) {
         throw new HttpFunctionError(403, "permission-denied", "このアカウントではOCRを使えません。");
       }
 
@@ -231,6 +235,12 @@ function getBearerToken(request) {
   const authorization = request.get("authorization") || "";
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   return match?.[1] || "";
+}
+
+function isAllowedUser(authData) {
+  const uid = authData?.uid;
+  const email = String(authData?.token?.email || authData?.email || "").toLowerCase();
+  return Boolean((uid && ALLOWED_UIDS.has(uid)) || (email && ALLOWED_EMAILS.has(email)));
 }
 
 class HttpFunctionError extends Error {

@@ -392,7 +392,6 @@ calendarGrid?.addEventListener("click", (event) => {
 });
 
 dateInput.addEventListener("change", () => {
-  clearEditState(false);
   renderSelectedDay();
 });
 
@@ -424,6 +423,7 @@ monthSelect.addEventListener("change", () => {
   selectedMonthOffset = Number(monthSelect.value);
   localStorage.setItem("budget-app-month-offset", String(selectedMonthOffset));
   renderMetrics();
+  renderAdvanceSummary();
   renderCategories();
   renderCalendar();
   renderExpenses();
@@ -486,7 +486,11 @@ receiptInput.addEventListener("change", async () => {
 });
 
 amountInput.addEventListener("focus", () => {
-  activeCalcInput = amountInput;
+  showCalculator(amountInput);
+});
+
+amountInput.addEventListener("click", () => {
+  showCalculator(amountInput);
 });
 
 amountInput.addEventListener("input", () => handleAmountInput(amountInput, amountPreview));
@@ -510,7 +514,7 @@ splitRows?.addEventListener("click", (event) => {
 
 splitRows?.addEventListener("focusin", (event) => {
   const input = event.target.closest(".split-amount");
-  if (input) activeCalcInput = input;
+  if (input) showCalculator(input);
 });
 
 splitRows?.addEventListener("input", (event) => {
@@ -523,6 +527,13 @@ calculatorPad?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-calc-key]");
   if (!button) return;
   applyCalculatorKey(button.dataset.calcKey);
+});
+
+document.addEventListener("pointerdown", (event) => {
+  if (!calculatorPad || calculatorPad.hidden) return;
+  const target = event.target;
+  if (target.closest(".calc-input") || target.closest("#calculatorPad") || target.closest("[data-apply-calc]")) return;
+  hideCalculator();
 });
 
 form.addEventListener("click", (event) => {
@@ -572,6 +583,7 @@ form.addEventListener("submit", (event) => {
   dateInput.value = submittedDate;
   clearSplitRows();
   updateAmountPreview(amountInput, amountPreview);
+  hideCalculator();
   clearEditState(false);
   receiptPreview.removeAttribute("src");
   receiptPreview.style.display = "none";
@@ -1492,6 +1504,15 @@ function updateAmountPreview(input, preview) {
   preview.textContent = amount ? `= ${yen(amount)}` : "半角数字と+-だけ使えます";
 }
 
+function showCalculator(input) {
+  activeCalcInput = input || amountInput;
+  if (calculatorPad) calculatorPad.hidden = false;
+}
+
+function hideCalculator() {
+  if (calculatorPad) calculatorPad.hidden = true;
+}
+
 function applyAmountExpression(row) {
   const input = row?.querySelector(".calc-input");
   if (!input) return;
@@ -1725,19 +1746,19 @@ function renderAdvanceDetail() {
   if (!detail) return;
 
   document.querySelectorAll("[data-advance-detail]").forEach((button) => {
-    button.classList.toggle("selected", button.dataset.advanceDetail === selectedAdvanceDetail);
+    const isSelected = button.dataset.advanceDetail === selectedAdvanceDetail;
+    button.classList.toggle("selected", isSelected);
+    button.setAttribute("aria-expanded", String(isSelected));
   });
 
   const allItems = monthlyExpenses().filter((expense) => advancePayerFor(expense));
-  if (!allItems.length) {
+  if (!selectedAdvanceDetail || !allItems.length) {
     detail.hidden = true;
     detail.innerHTML = "";
     return;
   }
 
-  const items = selectedAdvanceDetail
-    ? allItems.filter((expense) => advancePayerFor(expense) === selectedAdvanceDetail)
-    : allItems;
+  const items = allItems.filter((expense) => advancePayerFor(expense) === selectedAdvanceDetail);
   detail.hidden = false;
   if (!items.length) {
     detail.innerHTML = `
@@ -1751,10 +1772,9 @@ function renderAdvanceDetail() {
   }
 
   const total = items.reduce((sum, expense) => sum + expense.amount, 0);
-  const heading = selectedAdvanceDetail ? `${selectedAdvanceDetail}立替の内訳` : "立替登録の内訳";
   detail.innerHTML = `
     <div class="advance-detail-head">
-      <strong>${heading}</strong>
+      <strong>${selectedAdvanceDetail}立替の内訳</strong>
       <span>${items.length}件・${yen(total)}</span>
     </div>
     <div class="advance-detail-list">
@@ -1781,11 +1801,13 @@ function renderCategories() {
       const budgetText = item.budget ? ` / 予算${yen(item.budget)}・${percent(item.total, item.budget)}%` : "";
       return `
         <div class="category-row">
-          <span class="category-name">${item.category}</span>
+          <div class="category-row-head">
+            <span class="category-name">${item.category}</span>
+            <span class="category-amount">${yen(item.total)}${budgetText}</span>
+          </div>
           <div class="bar-track" aria-hidden="true">
             <div class="bar-fill" style="width: ${width}%; background: ${colorByCategory[item.category]}"></div>
           </div>
-          <span class="category-amount">${yen(item.total)}${budgetText}</span>
         </div>
       `;
     })
