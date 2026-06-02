@@ -2096,10 +2096,8 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
   }
 
   .submit-button {
-    position: sticky;
-    bottom: calc(76px + env(safe-area-inset-bottom));
-    z-index: 5;
-    box-shadow: 0 10px 24px rgba(39, 116, 92, 0.22);
+    position: static;
+    box-shadow: none;
   }
 
   .form-date-payment-row {

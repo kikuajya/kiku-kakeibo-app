@@ -572,7 +572,7 @@ form.addEventListener("submit", (event) => {
   }));
 
   if (editingExpenseId) {
-    expenses = expenses.map((item) => (item.id === editingExpenseId ? createdExpenses[0] : item));
+    expenses = expenses.flatMap((item) => (item.id === editingExpenseId ? createdExpenses : [item]));
   } else {
     expenses = [...createdExpenses, ...expenses];
   }
@@ -582,6 +582,9 @@ form.addEventListener("submit", (event) => {
   form.reset();
   dateInput.value = submittedDate;
   clearSplitRows();
+  activeCalcInput = amountInput;
+  selectedAdvancePayer = "";
+  syncAdvanceButtons();
   updateAmountPreview(amountInput, amountPreview);
   hideCalculator();
   clearEditState(false);
@@ -1435,6 +1438,7 @@ function addSplitRow(data = {}) {
 
 function clearSplitRows() {
   if (splitRows) splitRows.innerHTML = "";
+  activeCalcInput = amountInput;
 }
 
 function getSplitParts() {
@@ -1505,7 +1509,7 @@ function updateAmountPreview(input, preview) {
 }
 
 function showCalculator(input) {
-  activeCalcInput = input || amountInput;
+  activeCalcInput = input?.isConnected ? input : amountInput;
   if (calculatorPad) calculatorPad.hidden = false;
 }
 
@@ -1523,7 +1527,8 @@ function applyAmountExpression(row) {
 }
 
 function applyCalculatorKey(key) {
-  const input = activeCalcInput || amountInput;
+  const input = activeCalcInput?.isConnected ? activeCalcInput : amountInput;
+  activeCalcInput = input;
   if (!input) return;
   if (key === "clear") {
     input.value = "";
@@ -1999,6 +2004,8 @@ function deleteExpense(id) {
 
 function clearEditState(resetForm = true) {
   editingExpenseId = "";
+  activeCalcInput = amountInput;
+  hideCalculator();
   if (resetForm) {
     form.reset();
     dateInput.valueAsDate = new Date();
