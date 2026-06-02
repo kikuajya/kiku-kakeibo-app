@@ -62,6 +62,7 @@ const categories = [
   "キャンプ（娯楽費）",
   "光熱費",
   "通信費",
+  "通信費（変動費）",
   "交通費",
   "医療費",
   "家賃",
@@ -81,6 +82,7 @@ const colorByCategory = {
   "キャンプ（娯楽費）": "#8a6a2d",
   光熱費: "#7164a3",
   通信費: "#4a7c8a",
+  "通信費（変動費）": "#4a7c8a",
   交通費: "#6f7d3c",
   医療費: "#a75374",
   家賃: "#4b5967",
@@ -204,7 +206,7 @@ const budgetGroupsByMode = {
   },
   personal: {
     fixed: ["scholarship"],
-    variable: ["food", "lunch", "dining", "clothingBeauty", "entertainment", "special", "other"],
+    variable: ["food", "lunch", "dining", "communication", "clothingBeauty", "entertainment", "special", "other"],
   },
 };
 
@@ -220,6 +222,8 @@ const categoryModeMap = {
   "衣服・美容": ["personal"],
   家具家電: ["couple"],
   "キャンプ（娯楽費）": ["couple"],
+  通信費: ["couple"],
+  "通信費（変動費）": ["personal"],
   奨学金: ["personal"],
 };
 
@@ -1469,6 +1473,8 @@ function visibleCategories(mode = currentMode) {
 
 function categoryForCurrentMode(category) {
   if (visibleCategories().includes(category)) return category;
+  if (category === "通信費") return currentMode === "personal" ? "通信費（変動費）" : "通信費";
+  if (category === "通信費（変動費）") return currentMode === "couple" ? "通信費" : "通信費（変動費）";
   if (category === "ランチ（外食）") return "外食費";
   if (category === "衣服・美容" || category === "家具家電") return "日用品";
   if (category === "キャンプ（娯楽費）") return "娯楽費";
@@ -2294,6 +2300,7 @@ function budgetForCategory(category) {
     奨学金: "scholarship",
     光熱費: "utilities",
     通信費: "communication",
+    "通信費（変動費）": "communication",
     食費: "food",
     "ランチ（外食）": "lunch",
     外食費: "dining",

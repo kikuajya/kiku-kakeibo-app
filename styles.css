@@ -1908,9 +1908,19 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
   .metrics,
   .content-grid,
   .wide-grid,
-  .expense-form,
-  .budget-grid {
+  .expense-form {
     grid-template-columns: 1fr;
+  }
+
+  .budget-grid,
+  .budget-grid.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .budget-grid label {
+    min-width: 0;
+    font-size: 12px;
   }
 
   .metrics {
