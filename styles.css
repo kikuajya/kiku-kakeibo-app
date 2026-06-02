@@ -1769,7 +1769,7 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
 
 @media (max-width: 680px) {
   body {
-    padding-bottom: calc(104px + env(safe-area-inset-bottom));
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
   }
 
   main,
@@ -1817,24 +1817,19 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
   }
 
   .nav-list {
-    position: fixed;
-    left: 10px;
-    right: 10px;
-    bottom: calc(18px + env(safe-area-inset-bottom));
-    z-index: 80;
     grid-template-columns: repeat(5, 1fr);
     gap: 4px;
     padding: 7px;
     border: 1px solid var(--line);
     border-radius: 8px;
     background: rgba(255, 253, 250, 0.96);
-    box-shadow: 0 14px 34px rgba(55, 50, 40, 0.18);
+    box-shadow: 0 8px 22px rgba(55, 50, 40, 0.12);
     backdrop-filter: blur(12px);
     pointer-events: auto;
   }
 
   .nav-list a {
-    min-height: 52px;
+    min-height: 42px;
     display: grid;
     place-items: center;
     padding: 6px 4px;
