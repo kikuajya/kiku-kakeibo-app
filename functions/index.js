@@ -13,6 +13,7 @@ const OCR_MONTHLY_LIMIT = 900;
 const MAX_IMAGE_BASE64_LENGTH = 5_000_000;
 const ALLOWED_UIDS = new Set([
   "scG6gjxpbzeN9uUPORQmuaei4rd2",
+  "YCGxkxTQmlQV3AD8r1dLSYeoAdf2",
 ]);
 const ALLOWED_EMAILS = new Set([
   "ajyasutacc@gmail.com",
