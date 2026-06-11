@@ -367,12 +367,14 @@ clearStampButton?.addEventListener("click", (event) => {
 });
 
 categoryList?.addEventListener("click", (event) => {
-  if (event.target.closest("summary")) return;
+  const toggleButton = event.target.closest("[data-category-toggle]");
+  if (!toggleButton) return;
   const row = event.target.closest("[data-category-row]");
   if (!row) return;
   const details = row.querySelector(".category-breakdown");
   if (!details) return;
   details.open = !details.open;
+  toggleButton.setAttribute("aria-expanded", String(details.open));
 });
 
 ocrAmountList?.addEventListener("click", (event) => {
@@ -1823,8 +1825,11 @@ function renderCategories() {
       const breakdownTotal = breakdownItems.reduce((sum, expense) => sum + expense.amount, 0);
       const breakdownHtml = breakdownItems.length
         ? `
+          <button type="button" class="category-breakdown-toggle" data-category-toggle aria-expanded="false">
+            内訳 <span>${breakdownItems.length}件・${yen(breakdownTotal)}</span>
+          </button>
           <details class="category-breakdown">
-            <summary>内訳を見る（${breakdownItems.length}件・${yen(breakdownTotal)}）</summary>
+            <summary>内訳</summary>
             <div class="category-breakdown-list">
               ${breakdownItems.map((expense) => `
                 <div class="category-breakdown-row">
