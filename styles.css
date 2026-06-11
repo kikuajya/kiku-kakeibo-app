@@ -364,6 +364,27 @@ main {
   color: var(--red);
 }
 
+.refresh-button {
+  min-height: 36px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  padding: 0 8px 0 12px;
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.refresh-button:hover,
+.refresh-button:focus-visible {
+  color: var(--blue);
+}
+
+.refresh-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .month-switcher {
   display: none;
 }
@@ -1939,6 +1960,22 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
     min-width: 42px;
     min-height: 38px;
     padding: 8px 7px;
+  }
+
+  .refresh-button {
+    width: 36px;
+    min-height: 38px;
+    overflow: hidden;
+    border-left: 1px solid var(--line);
+    padding: 0;
+    color: transparent;
+    font-size: 0;
+  }
+
+  .refresh-button::before {
+    content: "↻";
+    color: var(--green);
+    font-size: 18px;
   }
 
   .sign-out-button {

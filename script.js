@@ -293,6 +293,7 @@ const loginEmail = document.querySelector("#loginEmail");
 const loginPassword = document.querySelector("#loginPassword");
 const authMessage = document.querySelector("#authMessage");
 const signOutButton = document.querySelector("#signOutButton");
+const refreshButton = document.querySelector("#refreshButton");
 const syncStatus = document.querySelector("#syncStatus");
 let editingExpenseId = "";
 let selectedMonthOffset = Number(localStorage.getItem("budget-app-month-offset") || 0);
@@ -319,6 +320,22 @@ loginForm?.addEventListener("submit", async (event) => {
 
 signOutButton?.addEventListener("click", async () => {
   await signOut(auth);
+});
+
+refreshButton?.addEventListener("click", async () => {
+  refreshButton.disabled = true;
+  if (syncStatus) syncStatus.textContent = "更新中...";
+
+  try {
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.update().catch(() => {})));
+    }
+  } finally {
+    const url = new URL(window.location.href);
+    url.searchParams.set("v", `refresh-${Date.now()}`);
+    window.location.replace(url.toString());
+  }
 });
 
 document.querySelectorAll("[data-advance-payer]").forEach((button) => {
