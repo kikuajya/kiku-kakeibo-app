@@ -1649,6 +1649,10 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
   gap: 6px;
 }
 
+.category-row[data-category-row] {
+  cursor: pointer;
+}
+
 .category-row-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1678,6 +1682,48 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
 .category-amount {
   text-align: right;
   font-weight: 800;
+  white-space: nowrap;
+}
+
+.category-breakdown {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffefa;
+  padding: 8px 10px;
+}
+
+.category-breakdown summary {
+  cursor: pointer;
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.category-breakdown-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.category-breakdown-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.category-breakdown-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-breakdown-row strong {
+  color: var(--ink);
   white-space: nowrap;
 }
 

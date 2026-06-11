@@ -277,6 +277,7 @@ const trendSummary = document.querySelector("#trendSummary");
 const trendTable = document.querySelector("#trendTable");
 const categoryPieChart = document.querySelector("#categoryPieChart");
 const categoryPieLegend = document.querySelector("#categoryPieLegend");
+const categoryList = document.querySelector("#categoryList");
 const calendarGrid = document.querySelector("#calendarGrid");
 const calendarTotal = document.querySelector("#calendarTotal");
 const stampPicker = document.querySelector("#stampPicker");
@@ -363,6 +364,15 @@ closeStampPicker?.addEventListener("click", (event) => {
 clearStampButton?.addEventListener("click", (event) => {
   event.stopPropagation();
   clearNoSpendStamp();
+});
+
+categoryList?.addEventListener("click", (event) => {
+  if (event.target.closest("summary")) return;
+  const row = event.target.closest("[data-category-row]");
+  if (!row) return;
+  const details = row.querySelector(".category-breakdown");
+  if (!details) return;
+  details.open = !details.open;
 });
 
 ocrAmountList?.addEventListener("click", (event) => {
@@ -787,11 +797,9 @@ async function saveCloudData() {
   };
 
   if (deletedStampDates.length) {
-    Object.entries(noSpendStamps).forEach(([dateKey, stamp]) => {
-      payload[`noSpendStamps.${dateKey}`] = stamp;
-    });
+    payload.noSpendStamps = { ...noSpendStamps };
     deletedStampDates.forEach((dateKey) => {
-      payload[`noSpendStamps.${dateKey}`] = deleteField();
+      payload.noSpendStamps[dateKey] = deleteField();
     });
   } else {
     payload.noSpendStamps = noSpendStamps;
@@ -1595,7 +1603,8 @@ function categoryTotals() {
 
 function buildAdvice(total, food, dining) {
   const messages = [];
-  const diningRate = percent(dining, food);
+  const mealTotal = food + dining;
+  const diningRate = percent(dining, mealTotal);
   const totalRate = percent(total, budgets.total);
 
   if (!monthlyExpenses().length) {
@@ -1615,13 +1624,13 @@ function buildAdvice(total, food, dining) {
     messages.push({
       level: "warning",
       title: "食費の中で外食比率が高めです",
-      body: `外食が食費の${diningRate}%を占めています。ランチ、カフェ、夕食のどこが多いか次に分けて見るのがおすすめです。`,
+      body: `外食とランチが食費まわりの${diningRate}%を占めています。ランチ、カフェ、夕食のどこが多いか次に分けて見るのがおすすめです。`,
     });
   } else {
     messages.push({
       level: "normal",
       title: "外食費は管理できています",
-      body: `外食比率は食費の${diningRate}%です。この水準なら、日用品や光熱費の見直しも並行できます。`,
+      body: `外食比率は食費まわりの${diningRate}%です。この水準なら、日用品や光熱費の見直しも並行できます。`,
     });
   }
 
@@ -1691,7 +1700,7 @@ function buildAdvice(total, food, dining) {
 function renderMetrics() {
   const total = currentTotalSpend();
   const diningCategories = ["外食費", "ランチ（外食）"];
-  const food = sumBy((expense) => expense.category === "食費" || diningCategories.includes(expense.category));
+  const food = sumBy((expense) => expense.category === "食費");
   const dining = sumBy((expense) => diningCategories.includes(expense.category));
   const diningCount = monthlyExpenses().filter((expense) => diningCategories.includes(expense.category)).length;
   const remaining = budgets.total - total;
@@ -1706,7 +1715,7 @@ function renderMetrics() {
   document.querySelector("#savingCandidate").textContent = yen(savingCandidate);
   document.querySelector("#actualSavings").textContent = yen(budgets.savings || 0);
   document.querySelector("#foodShare").textContent = `生活費の${percent(food, total)}%`;
-  document.querySelector("#diningShare").textContent = `食費の${percent(dining, food)}%`;
+  document.querySelector("#diningShare").textContent = `生活費の${percent(dining, total)}%`;
   document.querySelector("#totalTrend").textContent = total ? `予算の${percent(total, budgets.total)}%を使用` : "データを入力してください";
   document.querySelector("#budgetStatus").textContent = remaining >= 0 ? "予算内" : "予算超過";
   document.querySelector("#savingCandidateNote").textContent = budgets.income ? `手取り${yen(budgets.income)}から差引` : "手取りを予算に入力";
@@ -1801,17 +1810,34 @@ function renderAdvanceDetail() {
 }
 
 function renderCategories() {
-  const list = document.querySelector("#categoryList");
+  if (!categoryList) return;
   const totals = sortCategoryTotals(categoryTotals());
   const maxTotal = Math.max(...totals.map((item) => item.total), 1);
   renderCategoryPieChart(totals);
 
-  list.innerHTML = totals
+  categoryList.innerHTML = totals
     .map((item) => {
-      const width = Math.max(4, Math.round((item.total / maxTotal) * 100));
+      const width = categoryBarWidth(item, maxTotal);
       const budgetText = item.budget ? ` / 予算${yen(item.budget)}・${percent(item.total, item.budget)}%` : "";
+      const breakdownItems = categoryBreakdownItems(item.category);
+      const breakdownTotal = breakdownItems.reduce((sum, expense) => sum + expense.amount, 0);
+      const breakdownHtml = breakdownItems.length
+        ? `
+          <details class="category-breakdown">
+            <summary>内訳を見る（${breakdownItems.length}件・${yen(breakdownTotal)}）</summary>
+            <div class="category-breakdown-list">
+              ${breakdownItems.map((expense) => `
+                <div class="category-breakdown-row">
+                  <span>${formatShortDate(expense.date)} ${escapeHtml(expense.memo || "メモなし")}</span>
+                  <strong>${yen(expense.amount)}</strong>
+                </div>
+              `).join("")}
+            </div>
+          </details>
+        `
+        : "";
       return `
-        <div class="category-row">
+        <div class="category-row" data-category-row>
           <div class="category-row-head">
             <span class="category-name">${item.category}</span>
             <span class="category-amount">${yen(item.total)}${budgetText}</span>
@@ -1819,10 +1845,23 @@ function renderCategories() {
           <div class="bar-track" aria-hidden="true">
             <div class="bar-fill" style="width: ${width}%; background: ${colorByCategory[item.category]}"></div>
           </div>
+          ${breakdownHtml}
         </div>
       `;
     })
     .join("");
+}
+
+function categoryBarWidth(item, maxTotal) {
+  if (!item.total) return 0;
+  if (item.budget) return Math.min(100, Math.max(4, Math.round((item.total / item.budget) * 100)));
+  return Math.max(4, Math.round((item.total / maxTotal) * 100));
+}
+
+function categoryBreakdownItems(category) {
+  return [...fixedMonthlyExpenses(), ...monthlyExpenses()]
+    .filter((expense) => expense.category === category)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount);
 }
 
 function renderCalendar() {
@@ -2217,8 +2256,9 @@ function renderExpenses() {
 
 function renderAdvice() {
   const total = currentTotalSpend();
-  const food = sumBy((expense) => expense.category === "食費" || expense.category === "外食費");
-  const dining = sumBy((expense) => expense.category === "外食費");
+  const diningCategories = ["外食費", "ランチ（外食）"];
+  const food = sumBy((expense) => expense.category === "食費");
+  const dining = sumBy((expense) => diningCategories.includes(expense.category));
   const advice = buildAdvice(total, food, dining);
 
   document.querySelector("#adviceList").innerHTML = advice
