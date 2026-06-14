@@ -1904,8 +1904,11 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
   }
 
   .app-context {
+    position: static;
     top: 64px;
     padding: 8px 10px;
+    box-shadow: none;
+    backdrop-filter: none;
   }
 
   .app-context strong {
@@ -1913,10 +1916,12 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
   }
 
   .sidebar {
+    position: static;
     border-right: 0;
     border-bottom: 1px solid var(--line);
-    background: rgba(255, 253, 250, 0.96);
-    backdrop-filter: blur(12px);
+    background: #fffdfa;
+    box-shadow: none;
+    backdrop-filter: none;
   }
 
   .brand {
@@ -1944,9 +1949,9 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
     padding: 7px;
     border: 1px solid var(--line);
     border-radius: 8px;
-    background: rgba(255, 253, 250, 0.96);
-    box-shadow: 0 8px 22px rgba(55, 50, 40, 0.12);
-    backdrop-filter: blur(12px);
+    background: #fffdfa;
+    box-shadow: none;
+    backdrop-filter: none;
     pointer-events: auto;
   }
 

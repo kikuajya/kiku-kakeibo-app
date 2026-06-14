@@ -304,6 +304,7 @@ let editingExpenseId = "";
 let selectedMonthOffset = Number(localStorage.getItem("budget-app-month-offset") || 0);
 let activeCalcInput = amountInput;
 let selectedAdvanceDetail = "";
+let lastUserScrollAt = 0;
 
 dateInput.valueAsDate = new Date();
 
@@ -2449,14 +2450,16 @@ function render() {
   renderMode();
   renderMetrics();
   renderAdvanceSummary();
-  renderTrendChart();
+  if (currentView() === "trend") renderTrendChart();
   renderCategories();
   renderCalendar();
   renderExpenses();
   renderSelectedDay();
   renderAdvice();
   updateViewFromHash({ scroll: false });
-  restoreScrollPosition(scrollPosition);
+  if (Date.now() - lastUserScrollAt > 250) {
+    restoreScrollPosition(scrollPosition);
+  }
 }
 
 function switchMode(mode) {
@@ -2764,11 +2767,25 @@ function renderTrendSummary(data) {
     .join("");
 }
 
-window.addEventListener("resize", renderTrendChart);
+let trendResizeTimer = 0;
+window.addEventListener("resize", () => {
+  if (currentView() !== "trend") return;
+  window.clearTimeout(trendResizeTimer);
+  trendResizeTimer = window.setTimeout(renderTrendChart, 180);
+});
+window.addEventListener("scroll", () => {
+  lastUserScrollAt = Date.now();
+}, { passive: true });
+
+function currentView() {
+  const view = (window.location.hash || "#dashboard").replace("#", "");
+  return ["dashboard", "receipt", "budget", "trend", "analysis"].includes(view) ? view : "dashboard";
+}
 
 function updateViewFromHash({ scroll = true } = {}) {
-  const view = (window.location.hash || "#dashboard").replace("#", "");
   const views = ["dashboard", "receipt", "budget", "trend", "analysis"];
+  const rawView = (window.location.hash || "#dashboard").replace("#", "");
+  const view = currentView();
   const viewLabels = {
     dashboard: "今月",
     receipt: "入力",
@@ -2795,7 +2812,7 @@ function updateViewFromHash({ scroll = true } = {}) {
       window.scrollTo({ top: 0, left: 0 });
     });
   }
-  if (!views.includes(view)) {
+  if (!views.includes(rawView)) {
     history.replaceState(null, "", "#dashboard");
     updateViewFromHash({ scroll });
   }
