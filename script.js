@@ -240,9 +240,11 @@ let authUser = null;
 let cloudUnsubscribe = null;
 let cloudSaveTimer = 0;
 let cloudSaveInFlight = false;
+let cloudSaveQueuedWhileInFlight = false;
 let localChangeVersion = 0;
 let cloudSavedVersion = 0;
 let applyingCloudData = false;
+const cloudSaveTimeoutMs = 12000;
 const deletedNoSpendStampDates = new Set();
 
 const formatter = new Intl.NumberFormat("ja-JP", {
@@ -619,9 +621,10 @@ form.addEventListener("submit", (event) => {
   } else {
     expenses = [...createdExpenses, ...expenses];
   }
+  const hadNoSpendStamp = Object.prototype.hasOwnProperty.call(noSpendStamps, submittedDate);
   delete noSpendStamps[submittedDate];
   saveExpenses();
-  saveNoSpendStamps();
+  if (hadNoSpendStamp) saveNoSpendStamps();
   const savedTotal = createdExpenses.reduce((sum, expense) => sum + expense.amount, 0);
   setSaveNotice(`${editingExpenseId ? "更新しました" : "登録しました"}：${formatShortDate(submittedDate)} ${yen(savedTotal)}（${createdExpenses.length}件）`, "success");
   form.reset();
@@ -776,7 +779,7 @@ function saveExpenses() {
   localStorage.setItem(modeConfig[currentMode].storageKey, JSON.stringify(expenses));
   saveDeletedExpenseIds();
   markLocalChange();
-  queueCloudSave(true);
+  queueCloudSave();
 }
 
 function createExpenseId(index = 0) {
@@ -925,6 +928,7 @@ function writeLocalCache() {
 function markLocalChange() {
   if (applyingCloudData) return;
   localChangeVersion += 1;
+  setSyncStatus("端末に保存済み・同期待ち", "saving");
 }
 
 function cloudDataRef(mode = currentMode) {
@@ -934,9 +938,24 @@ function cloudDataRef(mode = currentMode) {
 }
 
 function queueCloudSave(immediate = false) {
-  if (!authUser || applyingCloudData || cloudSaveInFlight) return;
+  if (!authUser || applyingCloudData) return;
+  if (cloudSaveInFlight) {
+    cloudSaveQueuedWhileInFlight = true;
+    setSyncStatus("端末に保存済み・同期待ち", "saving");
+    return;
+  }
   window.clearTimeout(cloudSaveTimer);
   cloudSaveTimer = window.setTimeout(saveCloudData, immediate ? 0 : 500);
+}
+
+function cloudSaveTimeout() {
+  return new Promise((_, reject) => {
+    window.setTimeout(() => {
+      const error = new Error("cloud-save-timeout");
+      error.name = "CloudSaveTimeout";
+      reject(error);
+    }, cloudSaveTimeoutMs);
+  });
 }
 
 async function saveCloudData() {
@@ -962,27 +981,41 @@ async function saveCloudData() {
   }
 
   let saved = false;
+  let retryCloudSave = false;
   cloudSaveInFlight = true;
+  cloudSaveQueuedWhileInFlight = false;
   try {
-    setSyncStatus("同期中...", "saving");
-    await setDoc(
-      ref,
-      payload,
-      { merge: true },
+    setSyncStatus("端末に保存済み・同期中", "saving");
+    await Promise.race(
+      [
+        setDoc(
+          ref,
+          payload,
+          { merge: true },
+        ),
+        cloudSaveTimeout(),
+      ],
     );
     if (localChangeVersion === savingVersion) {
       cloudSavedVersion = savingVersion;
     }
     saved = true;
-    setSyncStatus("同期済み", "ok");
+    setSyncStatus(currentMode === "couple" ? "夫婦用を同期済み" : "個人用を同期済み", "ok");
   } catch (error) {
-    setSyncStatus("同期できませんでした", "error");
-    setSaveNotice("同期できませんでした。ネット接続を確認して、更新ボタンを押してください。", "error");
-    console.error(error);
+    if (error?.name === "CloudSaveTimeout") {
+      retryCloudSave = true;
+      setSyncStatus("端末に保存済み・同期は自動再試行", "saving");
+    } else {
+      setSyncStatus("同期できませんでした", "error");
+      setSaveNotice("同期できませんでした。ネット接続を確認して、更新ボタンを押してください。", "error");
+      console.error(error);
+    }
   } finally {
     cloudSaveInFlight = false;
-    if (saved && localChangeVersion > cloudSavedVersion) {
+    if (saved && (localChangeVersion > cloudSavedVersion || cloudSaveQueuedWhileInFlight)) {
       queueCloudSave(true);
+    } else if (retryCloudSave) {
+      queueCloudSave(false);
     }
   }
 }
@@ -1035,7 +1068,7 @@ function subscribeCloudData() {
       });
       writeLocalCache();
       applyingCloudData = false;
-      setSyncStatus(hasPendingLocalChange ? "保存中..." : (currentMode === "couple" ? "夫婦用を同期済み" : "個人用を同期済み"), hasPendingLocalChange ? "saving" : "ok");
+      setSyncStatus(hasPendingLocalChange ? "端末に保存済み・同期待ち" : (currentMode === "couple" ? "夫婦用を同期済み" : "個人用を同期済み"), hasPendingLocalChange ? "saving" : "ok");
       render();
       if (hasPendingLocalChange) {
         queueCloudSave(true);
