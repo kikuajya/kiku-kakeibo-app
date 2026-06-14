@@ -583,7 +583,8 @@ form.addEventListener("click", (event) => {
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
-  const submittedDate = dateInput.value;
+  const submittedDate = normalizeExpenseDate(dateInput.value);
+  dateInput.value = submittedDate;
   const mainAmount = parseAmountExpression(amountInput.value);
   const splitParts = getSplitParts();
 
@@ -661,9 +662,34 @@ function normalizeExpenses(items) {
     return {
       ...expense,
       id: expense.id || `${expense.date || "date"}-${expense.amount || 0}-${index}-${Date.now()}`,
+      date: normalizeExpenseDate(expense.date),
       updatedAtLocal,
     };
   });
+}
+
+function normalizeExpenseDate(dateKey) {
+  const match = String(dateKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return dateKey;
+
+  const [, rawYear, rawMonth, rawDay] = match;
+  const year = Number(rawYear);
+  const month = Number(rawMonth);
+  const day = Number(rawDay);
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const correctedYear = Math.abs(year - currentYear) > 2 ? currentYear : year;
+  const correctedDate = new Date(correctedYear, month - 1, day);
+
+  if (
+    correctedDate.getFullYear() !== correctedYear
+    || correctedDate.getMonth() !== month - 1
+    || correctedDate.getDate() !== day
+  ) {
+    return dateKey;
+  }
+
+  return formatDateLocal(correctedDate);
 }
 
 function loadDeletedExpenseIds() {
@@ -1011,7 +1037,9 @@ function subscribeCloudData() {
       applyingCloudData = false;
       setSyncStatus(hasPendingLocalChange ? "保存中..." : (currentMode === "couple" ? "夫婦用を同期済み" : "個人用を同期済み"), hasPendingLocalChange ? "saving" : "ok");
       render();
-      if (hasPendingLocalChange || shouldRepairCloud) {
+      if (hasPendingLocalChange) {
+        queueCloudSave(true);
+      } else if (shouldRepairCloud) {
         markLocalChange();
         queueCloudSave(true);
       }
@@ -1454,9 +1482,9 @@ function extractReceiptDate(text) {
     const match = source.match(pattern);
     if (!match) continue;
     const hasYear = match.length === 4;
-    const year = hasYear ? normalizeReceiptYear(Number(match[1])) : now.getFullYear();
     const month = Number(match[hasYear ? 2 : 1]);
     const day = Number(match[hasYear ? 3 : 2]);
+    const year = hasYear ? normalizeReceiptYear(Number(match[1]), month, day) : now.getFullYear();
     const date = new Date(year, month - 1, day);
     if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
       return formatDateLocal(date);
@@ -1466,9 +1494,21 @@ function extractReceiptDate(text) {
   return "";
 }
 
-function normalizeReceiptYear(year) {
-  if (year < 100) return 2000 + year;
-  return year;
+function normalizeReceiptYear(year, month, day) {
+  const fullYear = year < 100 ? 2000 + year : year;
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  if (Math.abs(fullYear - currentYear) <= 2) return fullYear;
+
+  const correctedDate = new Date(currentYear, month - 1, day);
+  if (
+    correctedDate.getFullYear() === currentYear
+    && correctedDate.getMonth() === month - 1
+    && correctedDate.getDate() === day
+  ) {
+    return currentYear;
+  }
+  return fullYear;
 }
 
 function extractNumbers(line) {
