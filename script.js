@@ -230,6 +230,7 @@ const categoryModeMap = {
 let currentMode = localStorage.getItem("budget-app-mode") || "couple";
 let selectedAdvancePayer = "";
 let expenses = loadExpenses();
+let deletedExpenseIds = loadDeletedExpenseIds();
 let budgets = loadBudgets();
 let selectedStamp = localStorage.getItem("budget-app-selected-stamp") || "🐱";
 let noSpendStamps = loadNoSpendStamps();
@@ -238,6 +239,9 @@ let stampSheetScrollPosition = null;
 let authUser = null;
 let cloudUnsubscribe = null;
 let cloudSaveTimer = 0;
+let cloudSaveInFlight = false;
+let localChangeVersion = 0;
+let cloudSavedVersion = 0;
 let applyingCloudData = false;
 const deletedNoSpendStampDates = new Set();
 
@@ -256,7 +260,8 @@ const amountPreview = document.querySelector("#amountPreview");
 const addSplitButton = document.querySelector("#addSplitButton");
 const splitRows = document.querySelector("#splitRows");
 const calculatorPad = document.querySelector("#calculatorPad");
-const submitButton = document.querySelector(".submit-button");
+const submitButton = document.querySelector("#expenseForm .submit-button");
+const formSaveStatus = document.querySelector("#formSaveStatus");
 const cancelEditButton = document.querySelector("#cancelEditButton");
 const receiptInput = document.querySelector("#receiptImage");
 const receiptPreview = document.querySelector("#receiptPreview");
@@ -324,7 +329,7 @@ signOutButton?.addEventListener("click", async () => {
 
 refreshButton?.addEventListener("click", async () => {
   refreshButton.disabled = true;
-  if (syncStatus) syncStatus.textContent = "更新中...";
+  setSyncStatus("更新中...", "saving");
 
   try {
     if ("serviceWorker" in navigator) {
@@ -582,15 +587,18 @@ form.addEventListener("submit", (event) => {
   const splitParts = getSplitParts();
 
   if (!mainAmount || splitParts.some((part) => !part.amount)) {
+    setSaveNotice("金額を確認してください。式は 279+118 のように入力できます。", "error");
     window.alert("金額を確認してください。式は 279+118 のように入力できます。");
     return;
   }
 
+  const now = Date.now();
   const baseExpense = {
     date: dateInput.value,
     memo: memoInput.value.trim(),
     payer: currentMode === "couple" ? "共有" : "自分",
     advancePayer: currentMode === "couple" ? selectedAdvancePayer : "",
+    updatedAtLocal: now,
   };
   const entries = [
     { amount: mainAmount, category: categoryForCurrentMode(categoryInput.value) },
@@ -598,7 +606,7 @@ form.addEventListener("submit", (event) => {
   ];
   const createdExpenses = entries.map((entry, index) => ({
     ...baseExpense,
-    id: editingExpenseId && index === 0 ? editingExpenseId : createExpenseId(),
+    id: editingExpenseId && index === 0 ? editingExpenseId : createExpenseId(index),
     memo: entries.length > 1 ? `${baseExpense.memo}（${entry.category}）` : baseExpense.memo,
     amount: entry.amount,
     category: entry.category,
@@ -612,6 +620,8 @@ form.addEventListener("submit", (event) => {
   delete noSpendStamps[submittedDate];
   saveExpenses();
   saveNoSpendStamps();
+  const savedTotal = createdExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+  setSaveNotice(`${editingExpenseId ? "更新しました" : "登録しました"}：${formatShortDate(submittedDate)} ${yen(savedTotal)}（${createdExpenses.length}件）`, "success");
   form.reset();
   dateInput.value = submittedDate;
   clearSplitRows();
@@ -645,19 +655,105 @@ function loadExpenses() {
 }
 
 function normalizeExpenses(items) {
-  return (Array.isArray(items) ? items : []).map((expense, index) => ({
-    ...expense,
-    id: expense.id || `${expense.date || "date"}-${expense.amount || 0}-${index}-${Date.now()}`,
-  }));
+  return (Array.isArray(items) ? items : []).map((expense, index) => {
+    const updatedAtLocal = Number(expense.updatedAtLocal || 0);
+    return {
+      ...expense,
+      id: expense.id || `${expense.date || "date"}-${expense.amount || 0}-${index}-${Date.now()}`,
+      updatedAtLocal,
+    };
+  });
+}
+
+function loadDeletedExpenseIds() {
+  const saved = localStorage.getItem(`${modeConfig[currentMode].storageKey}-deleted-expense-ids`);
+  return normalizeDeletedExpenseIds(parseStoredObject(saved));
+}
+
+function saveDeletedExpenseIds() {
+  localStorage.setItem(`${modeConfig[currentMode].storageKey}-deleted-expense-ids`, JSON.stringify(deletedExpenseIds));
+}
+
+function parseStoredObject(saved) {
+  if (!saved) return {};
+  try {
+    const parsed = JSON.parse(saved);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function normalizeDeletedExpenseIds(source) {
+  if (!source || typeof source !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([id, timestamp]) => [id, Number(timestamp) || 0])
+      .filter(([id]) => Boolean(id)),
+  );
+}
+
+function mergeDeletedExpenseIds(localDeleted, remoteDeleted) {
+  const merged = { ...normalizeDeletedExpenseIds(remoteDeleted) };
+  Object.entries(normalizeDeletedExpenseIds(localDeleted)).forEach(([id, timestamp]) => {
+    merged[id] = Math.max(merged[id] || 0, timestamp);
+  });
+  return merged;
+}
+
+function mergeExpenses(localExpenses, remoteExpenses, deletedIds) {
+  const deleted = normalizeDeletedExpenseIds(deletedIds);
+  const byId = new Map();
+
+  [...normalizeExpenses(remoteExpenses), ...normalizeExpenses(localExpenses)].forEach((expense) => {
+    if (deleted[expense.id]) return;
+    const current = byId.get(expense.id);
+    if (!current || expenseUpdatedAt(expense) >= expenseUpdatedAt(current)) {
+      byId.set(expense.id, expense);
+    }
+  });
+
+  return Array.from(byId.values()).sort((a, b) => {
+    const dateOrder = String(b.date || "").localeCompare(String(a.date || ""));
+    if (dateOrder) return dateOrder;
+    return expenseUpdatedAt(b) - expenseUpdatedAt(a);
+  });
+}
+
+function expenseUpdatedAt(expense) {
+  return Number(expense?.updatedAtLocal || 0);
+}
+
+function expenseSyncSignature(items) {
+  return JSON.stringify(
+    normalizeExpenses(items)
+      .map((expense) => ({
+        id: expense.id,
+        date: expense.date,
+        memo: expense.memo,
+        amount: Number(expense.amount) || 0,
+        category: expense.category,
+        payer: expense.payer,
+        advancePayer: expense.advancePayer || "",
+        updatedAtLocal: expenseUpdatedAt(expense),
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+  );
+}
+
+function deletedSyncSignature(items) {
+  return JSON.stringify(Object.entries(normalizeDeletedExpenseIds(items)).sort(([a], [b]) => a.localeCompare(b)));
 }
 
 function saveExpenses() {
   localStorage.setItem(modeConfig[currentMode].storageKey, JSON.stringify(expenses));
-  queueCloudSave();
+  saveDeletedExpenseIds();
+  markLocalChange();
+  queueCloudSave(true);
 }
 
-function createExpenseId() {
-  return `expense-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+function createExpenseId(index = 0) {
+  return `expense-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function loadNoSpendStamps() {
@@ -674,6 +770,7 @@ function loadNoSpendStamps() {
 
 function saveNoSpendStamps(immediate = false) {
   localStorage.setItem(`${modeConfig[currentMode].storageKey}-no-spend-stamps`, JSON.stringify(noSpendStamps));
+  markLocalChange();
   queueCloudSave(immediate);
 }
 
@@ -691,6 +788,7 @@ function loadBudgets() {
 function saveBudgets() {
   syncTotalBudget();
   localStorage.setItem(`${modeConfig[currentMode].storageKey}-budgets`, JSON.stringify(budgets));
+  markLocalChange();
   queueCloudSave();
 }
 
@@ -748,11 +846,13 @@ async function resetAllData() {
   modes.forEach((mode) => {
     const storageKey = modeConfig[mode].storageKey;
     localStorage.setItem(storageKey, JSON.stringify([]));
+    localStorage.setItem(`${storageKey}-deleted-expense-ids`, JSON.stringify({}));
     localStorage.setItem(`${storageKey}-budgets`, JSON.stringify(clearedBudgets));
     localStorage.setItem(`${storageKey}-no-spend-stamps`, JSON.stringify({}));
   });
 
   expenses = [];
+  deletedExpenseIds = {};
   budgets = { ...clearedBudgets };
   noSpendStamps = {};
   selectedAdvanceDetail = "";
@@ -761,10 +861,10 @@ async function resetAllData() {
   syncAdvanceButtons();
   syncBudgetInputs();
   render();
-  setSyncStatus("削除を保存中...");
+  setSyncStatus("削除を保存中...", "saving");
 
   if (!authUser) {
-    setSyncStatus("ローカル削除済み");
+    setSyncStatus("ローカル削除済み", "ok");
     return;
   }
 
@@ -773,23 +873,31 @@ async function resetAllData() {
       cloudDataRef(mode),
       {
         expenses: [],
+        deletedExpenseIds: {},
         budgets: clearedBudgets,
         noSpendStamps: {},
         updatedAt: serverTimestamp(),
       },
       { merge: true },
     )));
-    setSyncStatus("削除済み");
+    setSyncStatus("削除済み", "ok");
   } catch (error) {
-    setSyncStatus("削除を同期できませんでした");
+    setSyncStatus("削除を同期できませんでした", "error");
+    setSaveNotice("削除を同期できませんでした。ネット接続を確認してください。", "error");
     console.error(error);
   }
 }
 
 function writeLocalCache() {
   localStorage.setItem(modeConfig[currentMode].storageKey, JSON.stringify(expenses));
+  localStorage.setItem(`${modeConfig[currentMode].storageKey}-deleted-expense-ids`, JSON.stringify(deletedExpenseIds));
   localStorage.setItem(`${modeConfig[currentMode].storageKey}-budgets`, JSON.stringify(budgets));
   localStorage.setItem(`${modeConfig[currentMode].storageKey}-no-spend-stamps`, JSON.stringify(noSpendStamps));
+}
+
+function markLocalChange() {
+  if (applyingCloudData) return;
+  localChangeVersion += 1;
 }
 
 function cloudDataRef(mode = currentMode) {
@@ -799,18 +907,20 @@ function cloudDataRef(mode = currentMode) {
 }
 
 function queueCloudSave(immediate = false) {
-  if (!authUser || applyingCloudData) return;
+  if (!authUser || applyingCloudData || cloudSaveInFlight) return;
   window.clearTimeout(cloudSaveTimer);
   cloudSaveTimer = window.setTimeout(saveCloudData, immediate ? 0 : 500);
 }
 
 async function saveCloudData() {
   const ref = cloudDataRef();
-  if (!ref) return;
+  if (!ref || cloudSaveInFlight) return;
 
   const deletedStampDates = Array.from(deletedNoSpendStampDates);
+  const savingVersion = localChangeVersion;
   const payload = {
     expenses,
+    deletedExpenseIds,
     budgets,
     updatedAt: serverTimestamp(),
   };
@@ -824,17 +934,29 @@ async function saveCloudData() {
     payload.noSpendStamps = noSpendStamps;
   }
 
+  let saved = false;
+  cloudSaveInFlight = true;
   try {
-    setSyncStatus("同期中...");
+    setSyncStatus("同期中...", "saving");
     await setDoc(
       ref,
       payload,
       { merge: true },
     );
-    setSyncStatus("同期済み");
+    if (localChangeVersion === savingVersion) {
+      cloudSavedVersion = savingVersion;
+    }
+    saved = true;
+    setSyncStatus("同期済み", "ok");
   } catch (error) {
-    setSyncStatus("同期できませんでした");
+    setSyncStatus("同期できませんでした", "error");
+    setSaveNotice("同期できませんでした。ネット接続を確認して、更新ボタンを押してください。", "error");
     console.error(error);
+  } finally {
+    cloudSaveInFlight = false;
+    if (saved && localChangeVersion > cloudSavedVersion) {
+      queueCloudSave(true);
+    }
   }
 }
 
@@ -845,24 +967,33 @@ function subscribeCloudData() {
 
   const ref = cloudDataRef();
   if (!ref) {
-    setSyncStatus("ログインが必要です");
+    setSyncStatus("ログインが必要です", "error");
     return;
   }
 
-  setSyncStatus("クラウド確認中...");
+  setSyncStatus("クラウド確認中...", "saving");
   cloudUnsubscribe = onSnapshot(
     ref,
     (snapshot) => {
       if (!snapshot.exists()) {
-        setSyncStatus("初回同期中...");
+        setSyncStatus("初回同期中...", "saving");
         queueCloudSave(true);
         return;
       }
 
       const data = snapshot.data() || {};
+      const hasPendingLocalChange = localChangeVersion > cloudSavedVersion;
+      const remoteExpenses = normalizeExpenses(data.expenses || []);
+      const remoteDeletedExpenseIds = normalizeDeletedExpenseIds(data.deletedExpenseIds || {});
+      const mergedDeletedExpenseIds = mergeDeletedExpenseIds(deletedExpenseIds, remoteDeletedExpenseIds);
+      const mergedExpenses = mergeExpenses(expenses, remoteExpenses, mergedDeletedExpenseIds);
+      const shouldRepairCloud = expenseSyncSignature(mergedExpenses) !== expenseSyncSignature(remoteExpenses)
+        || deletedSyncSignature(mergedDeletedExpenseIds) !== deletedSyncSignature(remoteDeletedExpenseIds);
+
       applyingCloudData = true;
-      expenses = normalizeExpenses(data.expenses || []);
-      budgets = normalizeBudgets(data.budgets || {});
+      expenses = mergedExpenses;
+      deletedExpenseIds = mergedDeletedExpenseIds;
+      budgets = hasPendingLocalChange ? budgets : normalizeBudgets(data.budgets || {});
       const incomingStamps = data.noSpendStamps && typeof data.noSpendStamps === "object"
         ? { ...data.noSpendStamps }
         : {};
@@ -877,22 +1008,38 @@ function subscribeCloudData() {
       });
       writeLocalCache();
       applyingCloudData = false;
-      setSyncStatus(currentMode === "couple" ? "夫婦用を同期済み" : "個人用を同期済み");
+      setSyncStatus(hasPendingLocalChange ? "保存中..." : (currentMode === "couple" ? "夫婦用を同期済み" : "個人用を同期済み"), hasPendingLocalChange ? "saving" : "ok");
       render();
+      if (hasPendingLocalChange || shouldRepairCloud) {
+        markLocalChange();
+        queueCloudSave(true);
+      }
     },
     (error) => {
-      setSyncStatus("同期権限を確認してください");
+      setSyncStatus("同期権限を確認してください", "error");
+      setSaveNotice("同期できませんでした。権限またはネット接続を確認してください。", "error");
       console.error(error);
     },
   );
 }
 
-function setSyncStatus(message) {
-  if (syncStatus) syncStatus.textContent = message;
+function setSyncStatus(message, state = "") {
+  if (!syncStatus) return;
+  syncStatus.textContent = message;
+  syncStatus.classList.toggle("sync-ok", state === "ok");
+  syncStatus.classList.toggle("sync-saving", state === "saving");
+  syncStatus.classList.toggle("sync-error", state === "error");
 }
 
 function setAuthMessage(message) {
   if (authMessage) authMessage.textContent = message;
+}
+
+function setSaveNotice(message, level = "success") {
+  if (!formSaveStatus) return;
+  formSaveStatus.textContent = message;
+  formSaveStatus.classList.toggle("success", level === "success");
+  formSaveStatus.classList.toggle("error", level === "error");
 }
 
 function firebaseAuthErrorMessage(error) {
@@ -2063,9 +2210,11 @@ function deleteExpense(id) {
   const ok = window.confirm(`${expense.memo}（${yen(expense.amount)}）を削除しますか？`);
   if (!ok) return;
 
+  deletedExpenseIds[id] = Date.now();
   expenses = expenses.filter((item) => item.id !== id);
   if (editingExpenseId === id) clearEditState(false);
   saveExpenses();
+  setSaveNotice(`削除しました：${expense.memo} ${yen(expense.amount)}`, "success");
   render();
 }
 
@@ -2318,6 +2467,7 @@ function switchMode(mode) {
   localStorage.setItem("budget-app-mode", currentMode);
   selectedAdvancePayer = "";
   expenses = loadExpenses();
+  deletedExpenseIds = loadDeletedExpenseIds();
   budgets = loadBudgets();
   noSpendStamps = loadNoSpendStamps();
   form.reset();
@@ -2662,7 +2812,7 @@ onAuthStateChanged(auth, (user) => {
   if (!user) {
     if (cloudUnsubscribe) cloudUnsubscribe();
     cloudUnsubscribe = null;
-    setSyncStatus("ログインが必要です");
+    setSyncStatus("ログインが必要です", "error");
     setAuthMessage(
       isFilePage
         ? "この開き方ではログインできません。http://127.0.0.1:4180/ またはGitHub Pages版で開いてください。"
@@ -2673,6 +2823,7 @@ onAuthStateChanged(auth, (user) => {
 
   setAuthMessage("");
   expenses = loadExpenses();
+  deletedExpenseIds = loadDeletedExpenseIds();
   budgets = loadBudgets();
   noSpendStamps = loadNoSpendStamps();
   render();

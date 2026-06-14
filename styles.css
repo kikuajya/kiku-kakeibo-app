@@ -250,6 +250,18 @@ main {
   white-space: nowrap;
 }
 
+.app-context small.sync-ok {
+  color: var(--green);
+}
+
+.app-context small.sync-saving {
+  color: var(--gold);
+}
+
+.app-context small.sync-error {
+  color: var(--red);
+}
+
 .hero {
   min-height: 132px;
   padding: 22px;
@@ -1523,6 +1535,24 @@ body:not(.personal-mode) .metrics article:not(.metric-primary) {
 
 .submit-button {
   grid-column: 1 / -1;
+}
+
+.form-save-status {
+  grid-column: 1 / -1;
+  min-height: 22px;
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.form-save-status.success {
+  color: var(--green);
+}
+
+.form-save-status.error {
+  color: var(--red);
 }
 
 .cancel-edit-button {
