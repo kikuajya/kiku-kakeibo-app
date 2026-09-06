@@ -271,6 +271,7 @@ const scanStatus = document.querySelector("#scanStatus");
 const ocrReview = document.querySelector("#ocrReview");
 const ocrAmountList = document.querySelector("#ocrAmountList");
 const ocrRawText = document.querySelector("#ocrRawText");
+let receiptScanToken = 0;
 const seedButton = document.querySelector("#seedButton");
 const openReceiptButton = document.querySelector("#openReceiptButton");
 const modeLabel = document.querySelector("#modeLabel");
@@ -519,11 +520,22 @@ receiptInput.addEventListener("change", async () => {
   const file = receiptInput.files?.[0];
   if (!file) return;
 
+  const scanToken = receiptScanToken + 1;
+  receiptScanToken = scanToken;
+  receiptInput.disabled = true;
   receiptPreview.src = URL.createObjectURL(file);
   receiptPreview.style.display = "block";
   hideOcrReview();
   setScanStatus("warning", "写真を読み取り中", "Cloud Visionで日付・店舗・金額候補を確認しています。");
-  applyReceiptDraft(await readReceiptDraft(file));
+  try {
+    const draft = await readReceiptDraft(file);
+    if (scanToken === receiptScanToken) applyReceiptDraft(draft);
+  } finally {
+    if (scanToken === receiptScanToken) {
+      receiptInput.disabled = false;
+      receiptInput.value = "";
+    }
+  }
 });
 
 amountInput.addEventListener("focus", () => {

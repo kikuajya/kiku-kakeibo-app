@@ -5,7 +5,7 @@ const { FieldValue } = require("firebase-admin/firestore");
 const vision = require("@google-cloud/vision");
 
 admin.initializeApp();
-setGlobalOptions({ region: "asia-northeast1", maxInstances: 2 });
+setGlobalOptions({ region: "asia-northeast1", maxInstances: 10 });
 
 const db = admin.firestore();
 const visionClient = new vision.ImageAnnotatorClient();
@@ -105,7 +105,7 @@ const storeCategoryRules = [
 exports.analyzeReceipt = onCall(
   {
     timeoutSeconds: 60,
-    memory: "256MiB",
+    memory: "512MiB",
     invoker: "public",
   },
   async (request) => {
@@ -150,7 +150,7 @@ exports.analyzeReceipt = onCall(
 exports.analyzeReceiptHttp = onRequest(
   {
     timeoutSeconds: 60,
-    memory: "256MiB",
+    memory: "512MiB",
     invoker: "public",
   },
   async (request, response) => {
