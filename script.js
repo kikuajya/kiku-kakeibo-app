@@ -27,7 +27,7 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
-const cloudVisionEndpoint = "https://asia-northeast1-kiku-kakeibo.cloudfunctions.net/analyzeReceiptHttp";
+const cloudVisionEndpoint = "https://analyzereceipthttp-trpit5gpaa-an.a.run.app";
 const isFilePage = window.location.protocol === "file:";
 const tesseractScriptUrl = "https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/tesseract.min.js";
 const receiptAmountOcrLanguage = "eng";
@@ -1196,6 +1196,9 @@ function buildReceiptErrorDraft(error, fileHint) {
   } else if (code === "functions/not-found" || code === "not-found") {
     errorTitle = "Cloud Vision OCRが未反映です";
     errorBody = "Functionsのデプロイ、またはGitHub PagesへのPushがまだ反映されていない可能性があります。";
+  } else if (code === "http/500" || code === "http/503") {
+    errorTitle = "Cloud Vision OCRを起動できません";
+    errorBody = "Google Cloudの請求が無効、またはFunctionsが一時的に起動できない状態です。Firebase/Google Cloudの請求設定を確認してください。";
   } else if (code === "internal" || code === "http/500") {
     errorTitle = "Cloud Vision処理でエラーが出ました";
     errorBody = "Vision APIやFunctionsの権限を確認してください。";
@@ -1258,6 +1261,7 @@ async function readTextWithCloudVision(file) {
   if (!response.ok) {
     const error = new Error(payload.message || "Cloud Vision OCRに失敗しました。");
     error.code = payload.code || `http/${response.status}`;
+    error.status = response.status;
     throw error;
   }
   return payload;
